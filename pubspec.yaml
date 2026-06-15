@@ -1,0 +1,48 @@
+name: moerderspiel
+description: A multiplayer Assassin game for iOS and Android
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Backend
+  supabase_flutter: ^2.5.0
+
+  # State Management
+  flutter_riverpod: ^2.5.1
+
+  # Navigation
+  go_router: ^14.0.0
+
+  # UI
+  google_fonts: ^6.2.1
+  cached_network_image: ^3.3.1
+  shimmer: ^3.0.0
+
+  # Utilities
+  image_picker: ^1.1.2
+  share_plus: ^9.0.0
+  qr_flutter: ^4.1.0
+  timeago: ^3.6.1
+  uuid: ^4.4.0
+  shared_preferences: ^2.2.3
+  url_launcher: ^6.3.0
+  flutter_animate: ^4.5.0
+  confetti: ^0.7.0
+  intl: ^0.19.0
+  package_info_plus: ^8.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
