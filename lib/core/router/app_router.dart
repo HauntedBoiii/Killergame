@@ -18,8 +18,13 @@ import 'package:moerderspiel/presentation/screens/home/home_screen.dart';
 import 'package:moerderspiel/presentation/screens/profile/profile_screen.dart';
 import 'package:moerderspiel/presentation/screens/splash_screen.dart';
 
+final _splashDelayProvider = FutureProvider<void>((ref) async {
+  await Future.delayed(const Duration(seconds: 2));
+});
+
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
+  final splashDelay = ref.watch(_splashDelayProvider);
 
   return GoRouter(
     initialLocation: '/splash',
@@ -28,8 +33,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isSplash = loc == '/splash';
       final isAuthRoute = loc.startsWith('/auth');
 
-      // Supabase is still restoring the session — show splash, don't redirect elsewhere
-      if (authState.isLoading) {
+      // Stay on splash until both session is restored AND minimum time has passed
+      if (authState.isLoading || splashDelay.isLoading) {
         return isSplash ? null : '/splash';
       }
 
