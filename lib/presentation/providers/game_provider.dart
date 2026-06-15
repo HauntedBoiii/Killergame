@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:moerderspiel/data/models/assignment.dart';
 import 'package:moerderspiel/data/models/elimination.dart';
 import 'package:moerderspiel/data/models/game.dart';
@@ -7,6 +8,11 @@ import 'package:moerderspiel/data/models/task.dart';
 import 'package:moerderspiel/data/repositories/game_repository.dart';
 import 'package:moerderspiel/data/repositories/task_repository.dart';
 import 'package:moerderspiel/presentation/providers/auth_provider.dart';
+
+extension _StreamReconnect<T> on Stream<T> {
+  Stream<T> ignoreRealtimeErrors() =>
+      handleError((e) {}, test: (e) => e is RealtimeSubscribeException);
+}
 
 final gameRepositoryProvider = Provider<GameRepository>((_) => GameRepository());
 final taskRepositoryProvider = Provider<TaskRepository>((_) => TaskRepository());
@@ -20,13 +26,13 @@ final activeGamesProvider = FutureProvider.autoDispose<List<Game>>((ref) {
 // ── Game by ID ─────────────────────────────────────────────
 
 final gameProvider = StreamProvider.autoDispose.family<Game?, String>((ref, gameId) {
-  return ref.watch(gameRepositoryProvider).watchGame(gameId);
+  return ref.watch(gameRepositoryProvider).watchGame(gameId).ignoreRealtimeErrors();
 });
 
 // ── Players in game (real-time with profile join) ──────────
 
 final playersProvider = StreamProvider.autoDispose.family<List<GamePlayer>, String>((ref, gameId) {
-  return ref.watch(gameRepositoryProvider).watchPlayers(gameId);
+  return ref.watch(gameRepositoryProvider).watchPlayers(gameId).ignoreRealtimeErrors();
 });
 
 // ── Current user's player entry (derived from stream) ──────
@@ -41,13 +47,13 @@ final myPlayerProvider = Provider.autoDispose.family<GamePlayer?, String>((ref, 
 
 final assignmentProvider = StreamProvider.autoDispose.family<Assignment?, String>((ref, gameId) {
   final repo = ref.watch(gameRepositoryProvider);
-  return repo.watchAssignments(gameId).asyncMap((_) => repo.getMyAssignment(gameId));
+  return repo.watchAssignments(gameId).asyncMap((_) => repo.getMyAssignment(gameId)).ignoreRealtimeErrors();
 });
 
 // ── Kill history (real-time with profile join) ────────────
 
 final eliminationsProvider = StreamProvider.autoDispose.family<List<Elimination>, String>((ref, gameId) {
-  return ref.watch(gameRepositoryProvider).watchEliminations(gameId);
+  return ref.watch(gameRepositoryProvider).watchEliminations(gameId).ignoreRealtimeErrors();
 });
 
 // ── Pending kill (derived from kill stream) ───────────────
