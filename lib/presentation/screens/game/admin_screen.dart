@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:moerderspiel/core/utils/helpers.dart';
 import 'package:moerderspiel/data/models/game.dart';
 import 'package:moerderspiel/data/models/game_player.dart';
@@ -204,7 +205,10 @@ class _AdminPlayerTile extends StatelessWidget {
         );
         if (confirm == true) {
           try {
-            await ref.read(gameRepositoryProvider).removePlayer(gameId, player.playerId);
+            final result = await ref.read(gameRepositoryProvider).removePlayer(gameId, player.playerId);
+            if (context.mounted && result['game_over'] == true) {
+              context.go('/home');
+            }
           } catch (e) {
             if (context.mounted) showSnack(context, 'Fehler: $e', isError: true);
           }

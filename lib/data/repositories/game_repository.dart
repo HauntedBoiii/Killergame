@@ -119,12 +119,12 @@ class GameRepository {
         .eq('player_id', userId);
   }
 
-  Future<void> removePlayer(String gameId, String playerId) async {
-    await _client
-        .from('game_players')
-        .delete()
-        .eq('game_id', gameId)
-        .eq('player_id', playerId);
+  Future<Map<String, dynamic>> removePlayer(String gameId, String playerId) async {
+    final result = await _client.rpc('admin_kick_player', params: {
+      'game_id_param': gameId,
+      'target_player_id': playerId,
+    });
+    return Map<String, dynamic>.from(result as Map);
   }
 
   // ── Admin Controls ─────────────────────────────────────────
@@ -189,13 +189,10 @@ class GameRepository {
     required String victimId,
     String? taskId,
   }) async {
-    final userId = _client.auth.currentUser!.id;
-    await _client.from('eliminations').insert({
-      'game_id': gameId,
-      'killer_id': userId,
-      'victim_id': victimId,
-      'task_id': taskId,
-      'status': 'pending',
+    await _client.rpc('report_kill', params: {
+      'game_id_param': gameId,
+      'victim_id_param': victimId,
+      'task_id_param': taskId,
     });
   }
 

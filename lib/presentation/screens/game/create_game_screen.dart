@@ -67,9 +67,11 @@ class _CreateGameScreenState extends ConsumerState<CreateGameScreen> {
       appBar: AppBar(title: const Text('Spiel erstellen')),
       body: Form(
         key: _formKey,
-        child: ListView(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
-          children: [
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             AppTextField(
               controller: _nameCtrl,
               label: 'Spielname',
@@ -275,7 +277,8 @@ class _CreateGameScreenState extends ConsumerState<CreateGameScreen> {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
 
