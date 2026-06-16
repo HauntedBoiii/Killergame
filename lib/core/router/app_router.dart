@@ -24,8 +24,19 @@ final _splashDelayProvider = FutureProvider<void>((ref) async {
 
 class _RouterNotifier extends ChangeNotifier {
   _RouterNotifier(this._ref) {
-    _ref.listen(authStateProvider, (_, __) => notifyListeners());
-    _ref.listen(_splashDelayProvider, (_, __) => notifyListeners());
+    _ref.listen(authStateProvider, (previous, next) {
+      // Only re-evaluate router when login state actually changes, not on token refresh etc.
+      final wasLoggedIn = previous?.value?.session != null;
+      final nowLoggedIn = next.value?.session != null;
+      final wasLoading = previous?.isLoading ?? true;
+      final nowLoading = next.isLoading;
+      if (wasLoggedIn != nowLoggedIn || wasLoading != nowLoading) {
+        notifyListeners();
+      }
+    });
+    _ref.listen(_splashDelayProvider, (_, next) {
+      if (next.hasValue) notifyListeners();
+    });
   }
   final Ref _ref;
 
