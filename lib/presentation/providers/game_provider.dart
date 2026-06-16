@@ -64,10 +64,10 @@ final pendingKillProvider = Provider.autoDispose.family<Elimination?, String>((r
   return eliminations.where((e) => e.victimId == userId && e.isPending).firstOrNull;
 });
 
-// ── My tasks ───────────────────────────────────────────────
+// ── My tasks (real-time stream mit Task-Join) ──────────────
 
-final myTasksProvider = FutureProvider.autoDispose.family<List<PlayerTask>, String>((ref, gameId) {
-  return ref.watch(taskRepositoryProvider).getMyTasks(gameId);
+final myTasksProvider = StreamProvider.autoDispose.family<List<PlayerTask>, String>((ref, gameId) {
+  return ref.watch(taskRepositoryProvider).watchMyTasks(gameId).ignoreRealtimeErrors();
 });
 
 // ── Finished games ─────────────────────────────────────────

@@ -6,6 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:moerderspiel/core/utils/helpers.dart';
 import 'package:moerderspiel/data/models/assignment.dart';
 import 'package:moerderspiel/data/models/elimination.dart';
 import 'package:moerderspiel/data/models/game.dart';
@@ -128,6 +129,30 @@ class _GameBody extends ConsumerWidget {
                 ),
               ).animate().fadeIn(),
             ),
+
+            // Safe zones
+            if (game.settings.safeZones.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _InfoCard(
+                  icon: Icons.shield_outlined,
+                  color: Colors.blue,
+                  title: 'Schutzzonen',
+                  content: game.settings.safeZones.join(' · '),
+                ).animate().fadeIn(delay: 50.ms),
+              ),
+
+            // Protection times
+            if (game.settings.protectionTimes.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _InfoCard(
+                  icon: Icons.access_time,
+                  color: Colors.purple,
+                  title: 'Schutzzeiten',
+                  content: game.settings.protectionTimes
+                      .map((p) => '${p.startTime}–${p.endTime}${p.label != null ? ' (${p.label})' : ''}')
+                      .join(' · '),
+                ).animate().fadeIn(delay: 80.ms),
+              ),
 
             // Pending kill banner
             if (pendingKill != null)
@@ -327,9 +352,136 @@ class _GameBody extends ConsumerWidget {
               error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
             ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 32)),
+            // Leave game button
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                child: _LeaveButton(gameId: gameId),
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Info Card (safe zones / protection times) ──────────────
+
+class _InfoCard extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String content;
+
+  const _InfoCard({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.content,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                        letterSpacing: 0.5)),
+                const SizedBox(height: 2),
+                Text(content,
+                    style: const TextStyle(fontSize: 13),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Leave Game Button ──────────────────────────────────────
+
+class _LeaveButton extends ConsumerStatefulWidget {
+  final String gameId;
+  const _LeaveButton({required this.gameId});
+
+  @override
+  ConsumerState<_LeaveButton> createState() => _LeaveButtonState();
+}
+
+class _LeaveButtonState extends ConsumerState<_LeaveButton> {
+  bool _loading = false;
+
+  Future<void> _leave() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Spiel verlassen?'),
+        content: const Text(
+            'Du wirst aus dem aktiven Spiel entfernt. Dein Jäger bekommt dein Ziel. Deine Aufgaben verfallen.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Verlassen')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    setState(() => _loading = true);
+    try {
+      final result = await ref.read(gameRepositoryProvider).leaveGame(widget.gameId);
+      if (!mounted) return;
+      // Wenn kein Game-Over: zum Home navigieren
+      // Bei Game-Over springt der gameProvider-Stream-Listener auf /game/over
+      if (result['game_over'] != true) {
+        context.go('/home');
+      }
+    } catch (e) {
+      if (mounted) showSnack(context, 'Fehler: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: _loading ? null : _leave,
+      icon: _loading
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.exit_to_app, size: 16),
+      label: const Text('Spiel verlassen'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.grey,
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.5)),
+        minimumSize: const Size(double.infinity, 44),
       ),
     );
   }

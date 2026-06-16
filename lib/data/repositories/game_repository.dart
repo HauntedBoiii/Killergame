@@ -44,13 +44,9 @@ class GameRepository {
     return Game.fromJson(Map<String, dynamic>.from(result as Map));
   }
 
-  Future<void> leaveGame(String gameId) async {
-    final userId = _client.auth.currentUser!.id;
-    await _client
-        .from('game_players')
-        .delete()
-        .eq('game_id', gameId)
-        .eq('player_id', userId);
+  Future<Map<String, dynamic>> leaveGame(String gameId) async {
+    final result = await _client.rpc('leave_game', params: {'game_id_param': gameId});
+    return Map<String, dynamic>.from(result as Map);
   }
 
   // ── Game State ─────────────────────────────────────────────

@@ -26,6 +26,11 @@ class AdminScreen extends ConsumerWidget {
             children: [
               _SectionTitle(title: 'Spielstatus'),
               _GameStatusCard(game: game, gameId: gameId, ref: ref),
+              if (game.isLobby) ...[
+                const SizedBox(height: 24),
+                _SectionTitle(title: 'Spieleinstellungen'),
+                _SettingsEditorSection(game: game, gameId: gameId),
+              ],
               const SizedBox(height: 24),
               _SectionTitle(title: 'Spieler verwalten'),
               playersAsync.when(
@@ -205,6 +210,205 @@ class _AdminPlayerTile extends StatelessWidget {
           }
         }
       },
+    );
+  }
+}
+
+// ── Settings Editor Section (nur Lobby) ───────────────────
+
+class _SettingsEditorSection extends ConsumerStatefulWidget {
+  final Game game;
+  final String gameId;
+
+  const _SettingsEditorSection({required this.game, required this.gameId});
+
+  @override
+  ConsumerState<_SettingsEditorSection> createState() => _SettingsEditorSectionState();
+}
+
+class _SettingsEditorSectionState extends ConsumerState<_SettingsEditorSection> {
+  late bool _requireAdmin;
+  late bool _teamMode;
+  late int _initialTasksPerPlayer;
+  late bool _tasksAreSingleUse;
+  late List<TextEditingController> _safeZoneCtrl;
+  late List<ProtectionTime> _protectionTimes;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.game.settings;
+    _requireAdmin = s.requireAdminConfirmation;
+    _teamMode = s.teamMode;
+    _initialTasksPerPlayer = s.initialTasksPerPlayer;
+    _tasksAreSingleUse = s.tasksAreSingleUse;
+    _safeZoneCtrl = s.safeZones.map((z) => TextEditingController(text: z)).toList();
+    _protectionTimes = List.from(s.protectionTimes);
+  }
+
+  @override
+  void dispose() {
+    for (final c in _safeZoneCtrl) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _loading = true);
+    try {
+      final settings = GameSettings(
+        teamMode: _teamMode,
+        safeZones: _safeZoneCtrl.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList(),
+        protectionTimes: _protectionTimes,
+        requireAdminConfirmation: _requireAdmin,
+        initialTasksPerPlayer: _initialTasksPerPlayer,
+        tasksAreSingleUse: _tasksAreSingleUse,
+      );
+      await ref.read(gameRepositoryProvider).updateGameSettings(widget.gameId, settings);
+      if (mounted) showSnack(context, 'Einstellungen gespeichert!');
+    } catch (e) {
+      if (mounted) showSnack(context, 'Fehler: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isTaskMode = widget.game.mode == GameMode.task;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Admin-Bestätigung', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            subtitle: const Text('Kills müssen vom Admin bestätigt werden', style: TextStyle(fontSize: 12)),
+            value: _requireAdmin,
+            onChanged: (v) => setState(() => _requireAdmin = v),
+          ),
+          if (isTaskMode) ...[
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Aufgaben sind Einweg', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              subtitle: const Text('Benutzte Aufgaben sind verbraucht', style: TextStyle(fontSize: 12)),
+              value: _tasksAreSingleUse,
+              onChanged: (v) => setState(() => _tasksAreSingleUse = v),
+            ),
+            const SizedBox(height: 4),
+            const Text('Aufgaben pro Spieler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 1, label: Text('1')),
+                ButtonSegment(value: 2, label: Text('2')),
+                ButtonSegment(value: 3, label: Text('3')),
+              ],
+              selected: {_initialTasksPerPlayer},
+              onSelectionChanged: (s) => setState(() => _initialTasksPerPlayer = s.first),
+              expandedInsets: EdgeInsets.zero,
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Schutzzonen', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline, size: 20),
+                onPressed: () => setState(() => _safeZoneCtrl.add(TextEditingController())),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          ...List.generate(_safeZoneCtrl.length, (i) => Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _safeZoneCtrl[i],
+                    decoration: InputDecoration(
+                      labelText: 'Schutzzone ${i + 1}',
+                      prefixIcon: const Icon(Icons.shield_outlined, size: 18),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20),
+                  onPressed: () => setState(() {
+                    _safeZoneCtrl[i].dispose();
+                    _safeZoneCtrl.removeAt(i);
+                  }),
+                ),
+              ],
+            ),
+          )),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Schutzzeiten', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline, size: 20),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () async {
+                  final start = await showTimePicker(
+                    context: context,
+                    initialTime: const TimeOfDay(hour: 22, minute: 0),
+                  );
+                  if (start == null) return;
+                  if (!mounted) return;
+                  final end = await showTimePicker(
+                    // ignore: use_build_context_synchronously
+                    context: context,
+                    initialTime: const TimeOfDay(hour: 8, minute: 0),
+                  );
+                  if (end == null) return;
+                  setState(() => _protectionTimes.add(ProtectionTime(
+                    startTime: '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}',
+                    endTime: '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
+                    label: 'Nachtruhe',
+                  )));
+                },
+              ),
+            ],
+          ),
+          ...List.generate(_protectionTimes.length, (i) {
+            final pt = _protectionTimes[i];
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.access_time, color: Colors.blue, size: 18),
+              title: Text('${pt.startTime} – ${pt.endTime}', style: const TextStyle(fontSize: 13)),
+              subtitle: pt.label != null ? Text(pt.label!, style: const TextStyle(fontSize: 11)) : null,
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                onPressed: () => setState(() => _protectionTimes.removeAt(i)),
+              ),
+            );
+          }),
+          const SizedBox(height: 16),
+          AppButton(
+            label: 'Einstellungen speichern',
+            onPressed: _loading ? null : _save,
+            isLoading: _loading,
+            icon: Icons.save_outlined,
+          ),
+        ],
+      ),
     );
   }
 }

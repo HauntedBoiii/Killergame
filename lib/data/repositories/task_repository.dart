@@ -55,14 +55,10 @@ class TaskRepository {
   }
 
   Stream<List<PlayerTask>> watchMyTasks(String gameId) {
-    final userId = _client.auth.currentUser!.id;
     return _client
         .from('player_tasks')
         .stream(primaryKey: ['id'])
         .eq('game_id', gameId)
-        .map((rows) => rows
-            .where((r) => r['player_id'] == userId)
-            .map((e) => PlayerTask.fromJson(e))
-            .toList());
+        .asyncMap((_) => getMyTasks(gameId));
   }
 }
