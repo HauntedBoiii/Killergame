@@ -22,28 +22,37 @@ final _splashDelayProvider = FutureProvider<void>((ref) async {
   await Future.delayed(const Duration(seconds: 2));
 });
 
+class _RouterNotifier extends ChangeNotifier {
+  _RouterNotifier(this._ref) {
+    _ref.listen(authStateProvider, (_, __) => notifyListeners());
+    _ref.listen(_splashDelayProvider, (_, __) => notifyListeners());
+  }
+  final Ref _ref;
+
+  bool get isLoading =>
+      _ref.read(authStateProvider).isLoading ||
+      _ref.read(_splashDelayProvider).isLoading;
+
+  bool get isLoggedIn =>
+      _ref.read(authStateProvider).value?.session != null;
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
-  final splashDelay = ref.watch(_splashDelayProvider);
+  final notifier = _RouterNotifier(ref);
 
   return GoRouter(
     initialLocation: '/splash',
+    refreshListenable: notifier,
     redirect: (context, state) {
       final loc = state.matchedLocation;
       final isSplash = loc == '/splash';
       final isAuthRoute = loc.startsWith('/auth');
 
-      // Stay on splash until both session is restored AND minimum time has passed
-      if (authState.isLoading || splashDelay.isLoading) {
-        return isSplash ? null : '/splash';
-      }
+      if (notifier.isLoading) return isSplash ? null : '/splash';
 
-      final isLoggedIn = authState.value?.session != null;
+      final isLoggedIn = notifier.isLoggedIn;
 
-      // Session check done — leave splash toward the right screen
       if (isSplash) return isLoggedIn ? '/home' : '/auth/login';
-
-      // Standard auth guard
       if (!isLoggedIn && !isAuthRoute) return '/auth/login';
       if (isLoggedIn && isAuthRoute) return '/home';
       return null;
