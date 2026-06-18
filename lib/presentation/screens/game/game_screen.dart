@@ -32,6 +32,23 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         context.pushReplacement('/game/${widget.gameId}/over');
       }
     });
+    ref.listenManual(eliminationsProvider(widget.gameId), (prev, next) {
+      final userId = ref.read(currentUserIdProvider);
+      if (userId == null || !mounted) return;
+      final prevList = prev?.value ?? [];
+      final nextList = next.value ?? [];
+      for (final elim in nextList) {
+        if (elim.killerId == userId && elim.status == EliminationStatus.rejected) {
+          final wasAlreadyRejected = prevList.any(
+            (e) => e.id == elim.id && e.status == EliminationStatus.rejected,
+          );
+          if (!wasAlreadyRejected) {
+            showSnack(context, '❌ Dein Kill wurde abgelehnt!', isError: true);
+            break;
+          }
+        }
+      }
+    });
   }
 
   @override

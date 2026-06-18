@@ -24,6 +24,12 @@ Deno.serve(async (req) => {
     body = "Jemand behauptet, dich eliminiert zu haben. Bestätige oder lehne ab!";
     url = `/game/${record.game_id}`;
 
+  } else if (table === "eliminations" && type === "UPDATE" && record.status === "rejected" && old_record?.status === "pending") {
+    userIds = [record.killer_id];
+    title = "❌ Kill abgelehnt";
+    body = "Dein gemeldeter Kill wurde abgelehnt. Du behältst dein aktuelles Ziel.";
+    url = `/game/${record.game_id}`;
+
   } else if (table === "eliminations" && type === "UPDATE" && record.status === "confirmed") {
     const { data: players } = await supabase
       .from("game_players")

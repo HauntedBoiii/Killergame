@@ -8,7 +8,7 @@ external JSPromise<JSString?> _jsRequestPush(String vapidKey);
 
 class PushNotificationService {
   static const _vapidPublicKey =
-      'BBpdcMbNP9tiooqZx0lQgQQuoJcT0Lhmlly_55RmZaJMhclt_wmqH22qLquOx7xSxfatnguqfpmcrDhOwrWxUSM';
+      'BC6Gl7YwJE_P2uN5mNItXpy1loQbVen-aHNDLYaFhcIV3z1xctXokUwMLTFP2Nq53GtH4eNqFnolIpaqzd3MmkM';
 
   static Future<void> init() async {
     if (!kIsWeb) return;

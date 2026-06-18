@@ -826,6 +826,37 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 -- update_player_stats-Trigger wurde entfernt (003_fixes):
 -- zaehlt kills doppelt, Logik liegt in confirm_kill
 
+-- Push-Notification Trigger (ruft Edge Function send-push via pg_net auf)
+CREATE OR REPLACE FUNCTION public.trigger_push_notification()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM net.http_post(
+    url     := 'https://<project-ref>.supabase.co/functions/v1/send-push',
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'Authorization', 'Bearer <service_role_key>'
+    ),
+    body    := jsonb_build_object(
+      'type',       TG_OP,
+      'table',      TG_TABLE_NAME,
+      'record',     row_to_json(NEW),
+      'old_record', row_to_json(OLD)
+    )
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS push_eliminations ON public.eliminations;
+CREATE TRIGGER push_eliminations
+  AFTER INSERT OR UPDATE ON public.eliminations
+  FOR EACH ROW EXECUTE FUNCTION public.trigger_push_notification();
+
+DROP TRIGGER IF EXISTS push_games ON public.games;
+CREATE TRIGGER push_games
+  AFTER UPDATE ON public.games
+  FOR EACH ROW EXECUTE FUNCTION public.trigger_push_notification();
+
 -- ── Realtime ──────────────────────────────────────────────────
 
 ALTER PUBLICATION supabase_realtime ADD TABLE public.games;
