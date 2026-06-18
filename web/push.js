@@ -7,6 +7,16 @@ function _urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+window.getNotificationPermission = function () {
+  if (!('Notification' in window)) return 'unsupported';
+  return Notification.permission;
+};
+
+window.isRunningAsPwa = function () {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+};
+
 window.requestPushSubscription = function (vapidPublicKey) {
   return new Promise(function (resolve) {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return resolve(null);

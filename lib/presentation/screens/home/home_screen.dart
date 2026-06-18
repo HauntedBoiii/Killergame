@@ -19,10 +19,24 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool _showInstallBanner = false;
+  bool _showNotifBanner = false;
+
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => PushNotificationService.init());
+    Future.microtask(() async {
+      if (!PushNotificationService.isPwa()) {
+        if (mounted) setState(() => _showInstallBanner = true);
+        return;
+      }
+      final perm = PushNotificationService.getPermission();
+      if (perm == 'granted') {
+        await PushNotificationService.init();
+      } else if (perm == 'default') {
+        if (mounted) setState(() => _showNotifBanner = true);
+      }
+    });
   }
 
   @override
@@ -59,6 +73,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // PWA install hint
+            if (_showInstallBanner)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  children: [
+                    const Text('📲', style: TextStyle(fontSize: 20)),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Füge die App zum Homebildschirm hinzu um Push-Benachrichtigungen zu erhalten.',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16, color: Colors.orange),
+                      onPressed: () => setState(() => _showInstallBanner = false),
+                    ),
+                  ],
+                ),
+              ).animate().fadeIn(),
+
+            // Notification permission banner
+            if (_showNotifBanner)
+              GestureDetector(
+                onTap: () async {
+                  setState(() => _showNotifBanner = false);
+                  await PushNotificationService.init();
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('🔔', style: TextStyle(fontSize: 20)),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Benachrichtigungen aktivieren — erfahre sofort wenn du eliminiert wirst.',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      Icon(Icons.arrow_forward_ios, size: 14, color: theme.colorScheme.primary),
+                    ],
+                  ),
+                ),
+              ).animate().fadeIn(),
+
             // Welcome banner
             profile.when(
               data: (p) => GestureDetector(
