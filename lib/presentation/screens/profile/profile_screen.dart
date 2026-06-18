@@ -259,11 +259,16 @@ class _NotificationTile extends StatefulWidget {
 class _NotificationTileState extends State<_NotificationTile> {
   bool _loading = false;
 
-  Future<void> _enable() async {
+  Future<void> _register() async {
     setState(() => _loading = true);
-    await PushNotificationService.init();
-    if (mounted) setState(() => _loading = false);
-    if (mounted) showSnack(context, '🔔 Benachrichtigungen aktiviert!');
+    final success = await PushNotificationService.init();
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (success) {
+      showSnack(context, '🔔 Benachrichtigungen aktiviert!');
+    } else {
+      showSnack(context, '❌ Registrierung fehlgeschlagen.', isError: true);
+    }
   }
 
   @override
@@ -273,17 +278,17 @@ class _NotificationTileState extends State<_NotificationTile> {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Icon(
-        granted ? Icons.notifications_active : Icons.notifications_off_outlined,
-        color: granted ? Colors.green : Colors.grey,
+        granted ? Icons.notifications_outlined : Icons.notifications_off_outlined,
+        color: granted ? Colors.orange : Colors.grey,
       ),
-      title: Text(granted ? 'Benachrichtigungen aktiv' : 'Benachrichtigungen inaktiv'),
-      subtitle: Text(granted ? 'Du wirst benachrichtigt wenn etwas passiert.' : 'Tippe um sie zu aktivieren.'),
-      trailing: granted
-          ? null
-          : _loading
-              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.arrow_forward_ios, size: 14),
-      onTap: granted ? null : _enable,
+      title: const Text('Benachrichtigungen'),
+      subtitle: Text(granted
+          ? 'Tippe um Subscription zu erneuern.'
+          : 'Tippe um sie zu aktivieren.'),
+      trailing: _loading
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.arrow_forward_ios, size: 14),
+      onTap: _loading ? null : _register,
     );
   }
 }
