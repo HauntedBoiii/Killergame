@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:moerderspiel/core/services/push_notification_service.dart';
 import 'package:moerderspiel/core/utils/helpers.dart';
 import 'package:moerderspiel/presentation/providers/auth_provider.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
@@ -196,6 +197,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
               const SizedBox(height: 24),
 
+              // Notification status (web only)
+              if (PushNotificationService.isPwa()) _NotificationTile(),
+
+              const SizedBox(height: 24),
+
               // Game history
               Text('Spielhistorie', style: theme.textTheme.titleLarge),
               const SizedBox(height: 8),
@@ -243,6 +249,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   static Widget get _vDivider => Container(height: 40, width: 1, color: Colors.grey.withOpacity(0.3));
+}
+
+class _NotificationTile extends StatefulWidget {
+  @override
+  State<_NotificationTile> createState() => _NotificationTileState();
+}
+
+class _NotificationTileState extends State<_NotificationTile> {
+  bool _loading = false;
+
+  Future<void> _enable() async {
+    setState(() => _loading = true);
+    await PushNotificationService.init();
+    if (mounted) setState(() => _loading = false);
+    if (mounted) showSnack(context, '🔔 Benachrichtigungen aktiviert!');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final perm = PushNotificationService.getPermission();
+    final granted = perm == 'granted';
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        granted ? Icons.notifications_active : Icons.notifications_off_outlined,
+        color: granted ? Colors.green : Colors.grey,
+      ),
+      title: Text(granted ? 'Benachrichtigungen aktiv' : 'Benachrichtigungen inaktiv'),
+      subtitle: Text(granted ? 'Du wirst benachrichtigt wenn etwas passiert.' : 'Tippe um sie zu aktivieren.'),
+      trailing: granted
+          ? null
+          : _loading
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.arrow_forward_ios, size: 14),
+      onTap: granted ? null : _enable,
+    );
+  }
 }
 
 class _StatBox extends StatelessWidget {

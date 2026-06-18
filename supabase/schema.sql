@@ -218,6 +218,7 @@ CREATE POLICY "pach_select" ON public.player_achievements FOR SELECT USING (play
 CREATE POLICY "pach_insert" ON public.player_achievements FOR INSERT WITH CHECK (player_id = auth.uid());
 
 CREATE POLICY "push_sub_insert" ON public.push_subscriptions FOR INSERT WITH CHECK (user_id = auth.uid());
+CREATE POLICY "push_sub_update" ON public.push_subscriptions FOR UPDATE USING (user_id = auth.uid());
 CREATE POLICY "push_sub_select" ON public.push_subscriptions FOR SELECT USING (user_id = auth.uid());
 CREATE POLICY "push_sub_delete" ON public.push_subscriptions FOR DELETE USING (user_id = auth.uid());
 
