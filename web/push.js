@@ -31,9 +31,9 @@ window.requestPushSubscription = function (vapidPublicKey) {
         return resolve('ERROR:permission_not_granted:' + permission);
       }
 
-      var doSubscribe = function (registration) {
+      var doSubscribe = function (reg) {
         var subscribe = function () {
-          registration.pushManager.subscribe({
+          reg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: _urlBase64ToUint8Array(vapidPublicKey),
           }).then(function (sub) {
@@ -43,7 +43,7 @@ window.requestPushSubscription = function (vapidPublicKey) {
             resolve('ERROR:subscribe_failed:' + (err.message || err.toString()));
           });
         };
-        registration.pushManager.getSubscription().then(function (existing) {
+        reg.pushManager.getSubscription().then(function (existing) {
           if (existing) {
             existing.unsubscribe().then(subscribe).catch(subscribe);
           } else {
@@ -52,18 +52,32 @@ window.requestPushSubscription = function (vapidPublicKey) {
         });
       };
 
-      // Use existing SW registration if available (avoids conflict with Flutter SW)
-      navigator.serviceWorker.getRegistration('/').then(function (existing) {
-        if (existing) {
-          doSubscribe(existing);
-        } else {
-          navigator.serviceWorker.register('/push-sw.js').then(function (reg) {
-            navigator.serviceWorker.ready.then(function () { doSubscribe(reg); });
-          }).catch(function (err) {
+      // First clean up any old subscriptions from other SW registrations
+      navigator.serviceWorker.getRegistrations().then(function (registrations) {
+        return Promise.all(registrations.map(function (r) {
+          return r.pushManager.getSubscription().then(function (sub) {
+            if (sub) return sub.unsubscribe();
+          });
+        }));
+      }).then(function () {
+        // Register dedicated push SW at its own scope — no conflict with Flutter SW
+        navigator.serviceWorker.register('/push-sw.js', { scope: '/push-notifications/' })
+          .then(function (reg) {
+            var sw = reg.installing || reg.waiting || reg.active;
+            if (reg.active) {
+              doSubscribe(reg);
+            } else if (sw) {
+              sw.addEventListener('statechange', function () {
+                if (this.state === 'activated') doSubscribe(reg);
+              });
+            } else {
+              resolve('ERROR:sw_no_worker');
+            }
+          })
+          .catch(function (err) {
             console.error('[push] SW register failed:', err);
             resolve('ERROR:sw_register_failed:' + (err.message || err.toString()));
           });
-        }
       });
     });
   });

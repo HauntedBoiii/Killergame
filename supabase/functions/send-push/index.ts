@@ -78,7 +78,9 @@ Deno.serve(async (req) => {
     (subs ?? []).map(({ subscription }: any) =>
       webpush
         .sendNotification(JSON.parse(subscription), JSON.stringify({ title, body, url }))
-        .catch(() => {})
+        .catch((err: any) => {
+          console.error('sendNotification failed:', err.statusCode, err.body, err.message);
+        })
     )
   );
 

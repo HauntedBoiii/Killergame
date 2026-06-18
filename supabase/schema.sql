@@ -221,6 +221,7 @@ CREATE POLICY "push_sub_insert" ON public.push_subscriptions FOR INSERT WITH CHE
 CREATE POLICY "push_sub_update" ON public.push_subscriptions FOR UPDATE USING (user_id = auth.uid());
 CREATE POLICY "push_sub_select" ON public.push_subscriptions FOR SELECT USING (user_id = auth.uid());
 CREATE POLICY "push_sub_delete" ON public.push_subscriptions FOR DELETE USING (user_id = auth.uid());
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO authenticated;
 
 -- ── Functions (Bodies aus Chat-Nachrichten + 003 Fixes) ───────
 
