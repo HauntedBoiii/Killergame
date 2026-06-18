@@ -34,19 +34,22 @@ class PushNotificationService {
     }
   }
 
-  static Future<bool> init() async {
-    if (!kIsWeb) return false;
+  /// Returns null on success, or an error string on failure.
+  static Future<String?> init() async {
+    if (!kIsWeb) return null;
     try {
       final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId == null) return false;
+      if (userId == null) return 'not_logged_in';
 
       final jsResult = await _jsRequestPush(_vapidPublicKey).toDart;
-      if (jsResult == null) {
-        debugPrint('Push init: JS returned null (subscribe failed or permission denied)');
-        return false;
-      }
+      if (jsResult == null) return 'js_returned_null';
 
       final subJson = jsResult.toDart;
+      if (subJson.startsWith('ERROR:')) {
+        debugPrint('Push error from JS: $subJson');
+        return subJson;
+      }
+
       final parsed = jsonDecode(subJson) as Map<String, dynamic>;
       final endpoint = parsed['endpoint'] as String;
 
@@ -55,10 +58,10 @@ class PushNotificationService {
         'subscription': subJson,
         'endpoint': endpoint,
       }, onConflict: 'endpoint');
-      return true;
+      return null;
     } catch (e) {
       debugPrint('Push init error: $e');
-      return false;
+      return e.toString();
     }
   }
 }

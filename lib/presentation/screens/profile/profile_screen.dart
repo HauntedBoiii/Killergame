@@ -261,13 +261,13 @@ class _NotificationTileState extends State<_NotificationTile> {
 
   Future<void> _register() async {
     setState(() => _loading = true);
-    final success = await PushNotificationService.init();
+    final error = await PushNotificationService.init();
     if (!mounted) return;
     setState(() => _loading = false);
-    if (success) {
+    if (error == null) {
       showSnack(context, '🔔 Benachrichtigungen aktiviert!');
     } else {
-      showSnack(context, '❌ Registrierung fehlgeschlagen.', isError: true);
+      showSnack(context, '❌ Fehler: $error', isError: true);
     }
   }
 
