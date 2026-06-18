@@ -28,13 +28,22 @@ window.requestPushSubscription = function (vapidPublicKey) {
       navigator.serviceWorker.register('/push-sw.js').then(function (registration) {
         navigator.serviceWorker.ready.then(function () {
           registration.pushManager.getSubscription().then(function (existing) {
-            if (existing) return resolve(JSON.stringify(existing));
-            registration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: _urlBase64ToUint8Array(vapidPublicKey),
-            }).then(function (sub) {
-              resolve(JSON.stringify(sub));
-            }).catch(function () { resolve(null); });
+            var doSubscribe = function () {
+              registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: _urlBase64ToUint8Array(vapidPublicKey),
+              }).then(function (sub) {
+                resolve(JSON.stringify(sub));
+              }).catch(function (err) {
+                console.error('[push] subscribe failed:', err);
+                resolve(null);
+              });
+            };
+            if (existing) {
+              existing.unsubscribe().then(doSubscribe).catch(doSubscribe);
+            } else {
+              doSubscribe();
+            }
           });
         });
       }).catch(function () { resolve(null); });

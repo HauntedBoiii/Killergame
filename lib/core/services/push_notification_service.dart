@@ -41,9 +41,13 @@ class PushNotificationService {
       if (userId == null) return;
 
       final jsResult = await _jsRequestPush(_vapidPublicKey).toDart;
-      if (jsResult == null) return;
+      if (jsResult == null) {
+        debugPrint('Push init: JS returned null (subscribe failed or permission denied)');
+        return;
+      }
 
       final subJson = jsResult.toDart;
+      debugPrint('Push init: subscription received, saving to DB');
       final parsed = jsonDecode(subJson) as Map<String, dynamic>;
       final endpoint = parsed['endpoint'] as String;
 
