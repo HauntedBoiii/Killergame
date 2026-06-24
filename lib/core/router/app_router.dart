@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -51,6 +50,11 @@ class _RouterNotifier extends ChangeNotifier {
       _ref.read(authStateProvider).value?.session != null;
 }
 
+Page<void> _page(Widget child, GoRouterState state) => NoTransitionPage(
+      key: state.pageKey,
+      child: child,
+    );
+
 final routerProvider = Provider<GoRouter>((ref) {
   final notifier = _RouterNotifier(ref);
 
@@ -72,62 +76,32 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
-      GoRoute(path: '/auth/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/auth/register', builder: (_, __) => const RegisterScreen()),
-      GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
-      GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+      GoRoute(path: '/splash',         pageBuilder: (_, s) => _page(const SplashScreen(), s)),
+      GoRoute(path: '/auth/login',     pageBuilder: (_, s) => _page(const LoginScreen(), s)),
+      GoRoute(path: '/auth/register',  pageBuilder: (_, s) => _page(const RegisterScreen(), s)),
+      GoRoute(path: '/home',           pageBuilder: (_, s) => _page(const HomeScreen(), s)),
+      GoRoute(path: '/profile',        pageBuilder: (_, s) => _page(const ProfileScreen(), s)),
+      GoRoute(path: '/kniffel',        pageBuilder: (_, s) => _page(const KniffelScreen(), s)),
+      GoRoute(path: '/kniffel/leaderboard', pageBuilder: (_, s) => _page(const KniffelLeaderboardScreen(), s)),
+      GoRoute(path: '/game/create',    pageBuilder: (_, s) => _page(const CreateGameScreen(), s)),
       GoRoute(
-        path: '/kniffel',
-        pageBuilder: (_, state) => CupertinoPage(
-          key: state.pageKey,
-          child: const KniffelScreen(),
-        ),
+        path: '/game/join',
+        pageBuilder: (_, s) => _page(JoinGameScreen(initialCode: s.uri.queryParameters['code']), s),
       ),
-      GoRoute(
-        path: '/kniffel/leaderboard',
-        pageBuilder: (_, state) => CupertinoPage(
-          key: state.pageKey,
-          child: const KniffelLeaderboardScreen(),
-        ),
-      ),
-      GoRoute(path: '/game/create', builder: (_, __) => const CreateGameScreen()),
-      GoRoute(path: '/game/join', builder: (_, state) {
-        final code = state.uri.queryParameters['code'];
-        return JoinGameScreen(initialCode: code);
-      }),
       GoRoute(
         path: '/game/:gameId/lobby',
-        builder: (_, state) => LobbyScreen(gameId: state.pathParameters['gameId']!),
+        pageBuilder: (_, s) => _page(LobbyScreen(gameId: s.pathParameters['gameId']!), s),
       ),
       GoRoute(
         path: '/game/:gameId',
-        builder: (_, state) => GameScreen(gameId: state.pathParameters['gameId']!),
+        pageBuilder: (_, s) => _page(GameScreen(gameId: s.pathParameters['gameId']!), s),
         routes: [
-          GoRoute(
-            path: 'target',
-            builder: (_, state) => TargetScreen(gameId: state.pathParameters['gameId']!),
-          ),
-          GoRoute(
-            path: 'tasks',
-            builder: (_, state) => TasksScreen(gameId: state.pathParameters['gameId']!),
-          ),
-          GoRoute(
-            path: 'report-kill',
-            builder: (_, state) => ReportKillScreen(gameId: state.pathParameters['gameId']!),
-          ),
-          GoRoute(
-            path: 'history',
-            builder: (_, state) => KillHistoryScreen(gameId: state.pathParameters['gameId']!),
-          ),
-          GoRoute(
-            path: 'over',
-            builder: (_, state) => GameOverScreen(gameId: state.pathParameters['gameId']!),
-          ),
-          GoRoute(
-            path: 'admin',
-            builder: (_, state) => AdminScreen(gameId: state.pathParameters['gameId']!),
-          ),
+          GoRoute(path: 'target',      pageBuilder: (_, s) => _page(TargetScreen(gameId: s.pathParameters['gameId']!), s)),
+          GoRoute(path: 'tasks',       pageBuilder: (_, s) => _page(TasksScreen(gameId: s.pathParameters['gameId']!), s)),
+          GoRoute(path: 'report-kill', pageBuilder: (_, s) => _page(ReportKillScreen(gameId: s.pathParameters['gameId']!), s)),
+          GoRoute(path: 'history',     pageBuilder: (_, s) => _page(KillHistoryScreen(gameId: s.pathParameters['gameId']!), s)),
+          GoRoute(path: 'over',        pageBuilder: (_, s) => _page(GameOverScreen(gameId: s.pathParameters['gameId']!), s)),
+          GoRoute(path: 'admin',       pageBuilder: (_, s) => _page(AdminScreen(gameId: s.pathParameters['gameId']!), s)),
         ],
       ),
     ],
