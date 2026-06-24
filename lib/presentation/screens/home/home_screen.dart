@@ -11,6 +11,7 @@ import 'package:moerderspiel/presentation/providers/game_provider.dart';
 import 'package:moerderspiel/presentation/providers/kniffel_provider.dart';
 import 'package:moerderspiel/presentation/providers/theme_provider.dart';
 import 'package:moerderspiel/presentation/widgets/common/avatar_widget.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -22,6 +23,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _showInstallBanner = false;
   bool _showNotifBanner = false;
+  late final RealtimeChannel _kniffelChannel;
 
   @override
   void initState() {
@@ -38,6 +40,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (mounted) setState(() => _showNotifBanner = true);
       }
     });
+    _kniffelChannel = Supabase.instance.client
+        .channel('kniffel_home_live')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'kniffel_games',
+          callback: (payload) {
+            if (!mounted) return;
+            if (payload.newRecord['status'] == 'completed') {
+              ref.invalidate(dailyKniffelWinnerIdProvider);
+              ref.invalidate(todayKniffelRankProvider);
+              ref.invalidate(kniffelDailyLeaderboardProvider);
+              ref.invalidate(dailyKniffelBadgesProvider);
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    Supabase.instance.client.removeChannel(_kniffelChannel);
+    super.dispose();
   }
 
   @override
@@ -47,11 +72,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final finishedGames = ref.watch(finishedGamesProvider);
     final isDark = ref.watch(themeProvider);
     final theme = Theme.of(context);
-    final dailyWinnerId = ref.watch(dailyKniffelWinnerIdProvider).value;
-    final currentUserId = ref.watch(currentUserIdProvider);
-    final isKniffelWinner = dailyWinnerId != null &&
-        currentUserId != null &&
-        dailyWinnerId == currentUserId;
 
     return Scaffold(
       appBar: AppBar(
@@ -145,10 +165,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: _WelcomeBanner(
                   username: p?.username,
                   avatarUrl: p?.avatarUrl,
+                  userId: p?.id,
                   kills: p?.totalKills ?? 0,
                   wins: p?.totalWins ?? 0,
                   games: p?.totalGames ?? 0,
-                  showCrown: isKniffelWinner,
                   onDiceTap: () => context.push('/kniffel'),
                 ).animate(key: const ValueKey('home_welcome')).fadeIn().slideY(begin: -0.1),
               ),
@@ -240,19 +260,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 class _WelcomeBanner extends StatelessWidget {
   final String? username;
   final String? avatarUrl;
+  final String? userId;
   final int kills;
   final int wins;
   final int games;
-  final bool showCrown;
   final VoidCallback? onDiceTap;
 
   const _WelcomeBanner({
     required this.username,
     required this.avatarUrl,
+    required this.userId,
     required this.kills,
     required this.wins,
     required this.games,
-    this.showCrown = false,
     this.onDiceTap,
   });
 
@@ -283,11 +303,11 @@ class _WelcomeBanner extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 2),
             ),
-            child: AvatarWidget(
+            child: KniffelAwareAvatarWidget(
               imageUrl: avatarUrl,
               name: username,
               radius: 32,
-              showCrown: showCrown,
+              userId: userId,
             ),
           ),
           const SizedBox(width: 16),

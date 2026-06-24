@@ -40,10 +40,11 @@ class TargetScreen extends ConsumerWidget {
                       end: Alignment.bottomRight,
                     ),
                   ),
-                  child: AvatarWidget(
+                  child: KniffelAwareAvatarWidget(
                     imageUrl: target?.avatarUrl,
                     name: target?.username,
                     radius: 72,
+                    userId: target?.id,
                   ),
                 ).animate().fadeIn().scale(curve: Curves.elasticOut),
 

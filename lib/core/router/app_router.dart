@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -76,10 +77,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/auth/register', builder: (_, __) => const RegisterScreen()),
       GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
-      GoRoute(path: '/kniffel', builder: (_, __) => const KniffelScreen()),
+      GoRoute(
+        path: '/kniffel',
+        pageBuilder: (_, state) => CupertinoPage(
+          key: state.pageKey,
+          child: const KniffelScreen(),
+        ),
+      ),
       GoRoute(
         path: '/kniffel/leaderboard',
-        builder: (_, __) => const KniffelLeaderboardScreen(),
+        pageBuilder: (_, state) => CupertinoPage(
+          key: state.pageKey,
+          child: const KniffelLeaderboardScreen(),
+        ),
       ),
       GoRoute(path: '/game/create', builder: (_, __) => const CreateGameScreen()),
       GoRoute(path: '/game/join', builder: (_, state) {

@@ -67,11 +67,12 @@ class PlayerCard extends StatelessWidget {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        leading: AvatarWidget(
+        leading: KniffelAwareAvatarWidget(
           imageUrl: player.avatarUrl,
           name: player.displayName,
           isAlive: player.isAlive,
           radius: 24,
+          userId: player.playerId,
         ),
         title: Wrap(
           crossAxisAlignment: WrapCrossAlignment.center,

@@ -253,10 +253,11 @@ class _HeroHeader extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: AvatarWidget(
+                  child: KniffelAwareAvatarWidget(
                     imageUrl: winner!.avatarUrl,
                     name: winner!.displayName,
                     radius: 52,
+                    userId: winner!.playerId,
                   ),
                 ).animate().scale(delay: 500.ms, duration: 600.ms, curve: Curves.elasticOut),
                 const SizedBox(height: 10),
@@ -329,11 +330,12 @@ class _LeaderboardTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          AvatarWidget(
+          KniffelAwareAvatarWidget(
             imageUrl: player.avatarUrl,
             name: player.displayName,
             isAlive: player.isAlive,
             radius: 24,
+            userId: player.playerId,
           ),
           const SizedBox(width: 12),
           Expanded(

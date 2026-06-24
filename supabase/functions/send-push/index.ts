@@ -66,27 +66,26 @@ Deno.serve(async (req) => {
     url = `/game/${record.id}/over`;
 
   } else if (table === "kniffel_games" && type === "UPDATE" && record.status === "completed" && old_record?.status === "in_progress") {
-    // Fetch the player's name
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("username")
-      .eq("id", record.user_id)
-      .single();
-
-    // Get today's leaderboard to determine rank (function is SECURITY DEFINER, full access)
+    // Leaderboard RPC is SECURITY DEFINER — returns username + rank in one call
     const { data: leaderboard } = await supabase.rpc("kniffel_daily_leaderboard");
     const myEntry = (leaderboard ?? []).find((e: any) => e.user_id === record.user_id);
     const rank: number = myEntry?.rank ?? 1;
+    const name: string = myEntry?.username ?? record.user_id?.slice(0, 6) ?? "Jemand";
 
     const rankStr = rank === 1 ? "🥇 Platz 1" : rank === 2 ? "🥈 Platz 2" : rank === 3 ? "🥉 Platz 3" : `Platz ${rank}`;
-    const name = profile?.username ?? "Jemand";
 
-    // Notify all subscribers
     const { data: allSubs } = await supabase.from("push_subscriptions").select("user_id");
     userIds = (allSubs ?? []).map((s: any) => s.user_id as string);
     title = `🎲 ${name} hat Kniffel beendet!`;
     body = `${record.final_score} Punkte · ${rankStr}`;
     url = "/kniffel/leaderboard";
+
+  } else if (table === "kniffel_daily_reset" && type === "daily_reset") {
+    const { data: allSubs } = await supabase.from("push_subscriptions").select("user_id");
+    userIds = (allSubs ?? []).map((s: any) => s.user_id as string);
+    title = "🎲 Neue Runde Kniffel!";
+    body = "Neuer Tag, neues Glück – wer wird heute Würfelgottheit?";
+    url = "/kniffel";
 
   } else {
     console.log('[send-push] no-op: no matching branch');

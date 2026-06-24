@@ -50,23 +50,40 @@ final kniffelGameProvider =
     AsyncNotifierProvider<KniffelNotifier, KniffelGame?>(KniffelNotifier.new);
 
 final kniffelDailyLeaderboardProvider =
-    FutureProvider.family<List<KniffelDailyEntry>, String?>(
+    FutureProvider.autoDispose.family<List<KniffelDailyEntry>, String?>(
   (ref, gameId) =>
       ref.read(kniffelRepositoryProvider).dailyLeaderboard(gameId: gameId),
 );
 
 final kniffelAlltimeLeaderboardProvider =
-    FutureProvider.family<List<KniffelAlltimeEntry>, String?>(
+    FutureProvider.autoDispose.family<List<KniffelAlltimeEntry>, String?>(
   (ref, gameId) =>
       ref.read(kniffelRepositoryProvider).alltimeLeaderboard(gameId: gameId),
 );
 
-final dailyKniffelWinnerIdProvider = FutureProvider<String?>(
+final dailyKniffelWinnerIdProvider = FutureProvider.autoDispose<String?>(
   (ref) => ref.read(kniffelRepositoryProvider).getDailyWinnerId(),
 );
 
+/// Winners (rank 1) and last-place user IDs for today – used for crown/clown badges.
+final dailyKniffelBadgesProvider = FutureProvider.autoDispose<
+    ({Set<String> winners, Set<String> lastPlace})>((ref) async {
+  final entries = await ref
+      .read(kniffelRepositoryProvider)
+      .dailyLeaderboard(gameId: null);
+  if (entries.isEmpty) return (winners: <String>{}, lastPlace: <String>{});
+  final maxRank =
+      entries.map((e) => e.rank).reduce((a, b) => a > b ? a : b);
+  final winners =
+      entries.where((e) => e.rank == 1).map((e) => e.userId).toSet();
+  final lastPlace = entries.length > 1
+      ? entries.where((e) => e.rank == maxRank).map((e) => e.userId).toSet()
+      : <String>{};
+  return (winners: winners, lastPlace: lastPlace);
+});
+
 /// Rank of the current user in today's global leaderboard (after completing).
-final todayKniffelRankProvider = FutureProvider<int?>((ref) async {
+final todayKniffelRankProvider = FutureProvider.autoDispose<int?>((ref) async {
   final game = await ref.watch(kniffelGameProvider.future);
   if (game == null || !game.isCompleted || game.finalScore == null) {
     return null;

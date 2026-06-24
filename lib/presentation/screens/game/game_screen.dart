@@ -595,7 +595,7 @@ class _TargetCardState extends State<_TargetCard> with SingleTickerProviderState
                     border: Border.all(color: Colors.white, width: 2),
                   ),
                   child: _blurred(
-                    AvatarWidget(imageUrl: target?.avatarUrl, name: target?.username, radius: 34),
+                    KniffelAwareAvatarWidget(imageUrl: target?.avatarUrl, name: target?.username, radius: 34, userId: target?.id),
                   ),
                 ),
                 const SizedBox(width: 16),

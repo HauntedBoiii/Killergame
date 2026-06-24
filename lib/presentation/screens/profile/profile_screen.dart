@@ -98,10 +98,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   children: [
                     GestureDetector(
                       onTap: _pickAndUploadAvatar,
-                      child: AvatarWidget(
+                      child: KniffelAwareAvatarWidget(
                         imageUrl: profile.avatarUrl,
                         name: profile.username,
                         radius: 60,
+                        userId: profile.id,
                       ),
                     ),
                     Positioned(

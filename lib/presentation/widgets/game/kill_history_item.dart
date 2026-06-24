@@ -51,10 +51,11 @@ class KillHistoryItem extends StatelessWidget {
         children: [
           Row(
             children: [
-              AvatarWidget(
+              KniffelAwareAvatarWidget(
                 imageUrl: elimination.killerProfile?.avatarUrl,
                 name: killerName,
                 radius: 18,
+                userId: elimination.killerId,
               ),
               const SizedBox(width: 8),
               Expanded(

@@ -7,6 +7,7 @@ import 'package:moerderspiel/data/models/kniffel_game.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
 import 'package:moerderspiel/presentation/providers/kniffel_provider.dart';
 import 'package:moerderspiel/presentation/widgets/common/avatar_widget.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class KniffelLeaderboardScreen extends ConsumerStatefulWidget {
   const KniffelLeaderboardScreen({super.key});
@@ -20,6 +21,7 @@ class _KniffelLeaderboardScreenState
     extends ConsumerState<KniffelLeaderboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late final RealtimeChannel _channel;
   // null = global, non-null = filtered to that game's group
   String? _selectedGameId;
 
@@ -27,10 +29,27 @@ class _KniffelLeaderboardScreenState
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _channel = Supabase.instance.client
+        .channel('kniffel_leaderboard_live')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'kniffel_games',
+          callback: (payload) {
+            if (!mounted) return;
+            if (payload.newRecord['status'] == 'completed') {
+              ref.invalidate(kniffelDailyLeaderboardProvider);
+              ref.invalidate(dailyKniffelWinnerIdProvider);
+              ref.invalidate(dailyKniffelBadgesProvider);
+            }
+          },
+        )
+        .subscribe();
   }
 
   @override
   void dispose() {
+    Supabase.instance.client.removeChannel(_channel);
     _tabController.dispose();
     super.dispose();
   }
@@ -213,9 +232,12 @@ class _DailyLeaderboard extends ConsumerWidget {
             itemCount: entries.length,
             itemBuilder: (context, i) {
               final e = entries[i];
+              final maxRank = entries.map((e) => e.rank).reduce((a, b) => a > b ? a : b);
+              final isLast = entries.length > 1 && e.rank == maxRank;
               return _DailyRow(
                 entry: e,
                 isWinner: e.userId == winnerId,
+                isLast: isLast,
               )
                   .animate(key: ValueKey('daily_$i'))
                   .fadeIn(delay: Duration(milliseconds: 60 * i))
@@ -231,7 +253,8 @@ class _DailyLeaderboard extends ConsumerWidget {
 class _DailyRow extends StatelessWidget {
   final KniffelDailyEntry entry;
   final bool isWinner;
-  const _DailyRow({required this.entry, required this.isWinner});
+  final bool isLast;
+  const _DailyRow({required this.entry, required this.isWinner, this.isLast = false});
 
   @override
   Widget build(BuildContext context) {
@@ -291,12 +314,13 @@ class _DailyRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
 
-          // Avatar with optional crown
+          // Avatar with optional crown or clown
           AvatarWidget(
             imageUrl: entry.avatarUrl,
             name: entry.username,
             radius: 20,
             showCrown: isWinner,
+            showClown: isLast,
           ),
           const SizedBox(width: 12),
 
