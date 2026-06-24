@@ -80,6 +80,15 @@ class AdminScreen extends ConsumerWidget {
                       style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
                     ),
                     const SizedBox(height: 16),
+                    if (game.isActive) ...[
+                      AppButton(
+                        label: 'Zurück zur Lobby',
+                        onPressed: () => _resetToLobby(context, ref),
+                        color: Colors.orange,
+                        icon: Icons.refresh_outlined,
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     AppButton(
                       label: 'Spiel beenden',
                       onPressed: () => _endGame(context, ref),
@@ -97,6 +106,36 @@ class AdminScreen extends ConsumerWidget {
         error: (e, _) => Center(child: Text('Fehler: $e')),
       ),
     );
+  }
+
+  Future<void> _resetToLobby(BuildContext context, WidgetRef ref) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Zurück zur Lobby?'),
+        content: const Text(
+          'Das laufende Spiel wird zurückgesetzt.\n\n'
+          'Alle Zuweisungen, Aufgaben und Eliminations werden gelöscht. '
+          'Alle Spieler landen wieder in der Lobby und können neu gestartet werden.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Zurücksetzen'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      try {
+        await ref.read(gameRepositoryProvider).resetGameToLobby(gameId);
+        if (context.mounted) showSnack(context, 'Spiel zurückgesetzt – ihr seid wieder in der Lobby.');
+      } catch (e) {
+        if (context.mounted) showSnack(context, 'Fehler: $e', isError: true);
+      }
+    }
   }
 
   Future<void> _endGame(BuildContext context, WidgetRef ref) async {

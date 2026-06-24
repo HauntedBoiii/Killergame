@@ -133,6 +133,10 @@ class GameRepository {
     await _client.rpc('start_game', params: {'game_id_param': gameId});
   }
 
+  Future<void> resetGameToLobby(String gameId) async {
+    await _client.rpc('reset_game_to_lobby', params: {'game_id_param': gameId});
+  }
+
   Future<void> updateGameSettings(String gameId, GameSettings settings) async {
     await _client.from('games').update({'settings': settings.toJson()}).eq('id', gameId);
   }
