@@ -8,6 +8,7 @@ import 'package:moerderspiel/core/utils/helpers.dart';
 import 'package:moerderspiel/data/models/game.dart';
 import 'package:moerderspiel/presentation/providers/auth_provider.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
+import 'package:moerderspiel/presentation/providers/kniffel_provider.dart';
 import 'package:moerderspiel/presentation/providers/theme_provider.dart';
 import 'package:moerderspiel/presentation/widgets/common/avatar_widget.dart';
 
@@ -46,6 +47,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final finishedGames = ref.watch(finishedGamesProvider);
     final isDark = ref.watch(themeProvider);
     final theme = Theme.of(context);
+    final dailyWinnerId = ref.watch(dailyKniffelWinnerIdProvider).value;
+    final currentUserId = ref.watch(currentUserIdProvider);
+    final isKniffelWinner = dailyWinnerId != null &&
+        currentUserId != null &&
+        dailyWinnerId == currentUserId;
 
     return Scaffold(
       appBar: AppBar(
@@ -142,12 +148,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   kills: p?.totalKills ?? 0,
                   wins: p?.totalWins ?? 0,
                   games: p?.totalGames ?? 0,
+                  showCrown: isKniffelWinner,
+                  onDiceTap: () => context.push('/kniffel'),
                 ).animate(key: const ValueKey('home_welcome')).fadeIn().slideY(begin: -0.1),
               ),
               loading: () => const SizedBox(height: 120, child: Center(child: CircularProgressIndicator())),
               error: (_, __) => const SizedBox.shrink(),
             ),
 
+            const SizedBox(height: 12),
+            const _DailyKniffelCard()
+                .animate(key: const ValueKey('home_kniffel'))
+                .fadeIn(delay: 100.ms),
             const SizedBox(height: 20),
 
             // Active games
@@ -231,6 +243,8 @@ class _WelcomeBanner extends StatelessWidget {
   final int kills;
   final int wins;
   final int games;
+  final bool showCrown;
+  final VoidCallback? onDiceTap;
 
   const _WelcomeBanner({
     required this.username,
@@ -238,6 +252,8 @@ class _WelcomeBanner extends StatelessWidget {
     required this.kills,
     required this.wins,
     required this.games,
+    this.showCrown = false,
+    this.onDiceTap,
   });
 
   @override
@@ -267,7 +283,12 @@ class _WelcomeBanner extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 2),
             ),
-            child: AvatarWidget(imageUrl: avatarUrl, name: username, radius: 32),
+            child: AvatarWidget(
+              imageUrl: avatarUrl,
+              name: username,
+              radius: 32,
+              showCrown: showCrown,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -299,6 +320,39 @@ class _WelcomeBanner extends StatelessWidget {
                   ],
                 ),
               ],
+            ),
+          ),
+          // Pulsing dice button
+          GestureDetector(
+            onTap: onDiceTap,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.casino_rounded,
+                    color: Colors.white.withValues(alpha: 0.88),
+                    size: 28,
+                  )
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .scaleXY(
+                          end: 1.16,
+                          duration: 850.ms,
+                          curve: Curves.easeInOut),
+                  const SizedBox(height: 3),
+                  Text(
+                    'WÜRFELN',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -571,6 +625,148 @@ class _FinishedGameTile extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: Colors.grey.withValues(alpha: 0.8))),
         trailing: Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey.withValues(alpha: 0.5)),
         onTap: () => context.push('/game/${game.id}/over'),
+      ),
+    );
+  }
+}
+
+// ── Daily Kniffel Challenge Card ───────────────────────────
+
+class _DailyKniffelCard extends ConsumerWidget {
+  const _DailyKniffelCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final gameAsync = ref.watch(kniffelGameProvider);
+    final rankAsync = ref.watch(todayKniffelRankProvider);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final game = gameAsync.value;
+    final isCompleted = game?.isCompleted == true;
+    final isInProgress = game != null && !isCompleted;
+
+    final borderColor = isCompleted
+        ? Colors.green.withValues(alpha: 0.5)
+        : isInProgress
+            ? Colors.amber.withValues(alpha: 0.5)
+            : (isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.08));
+
+    final iconColor = isCompleted
+        ? Colors.green
+        : isInProgress
+            ? Colors.amber.shade600
+            : (isDark ? Colors.white38 : Colors.black26);
+
+    return GestureDetector(
+      onTap: () => context.push('/kniffel'),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.cardTheme.color,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: borderColor, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: (isCompleted ? Colors.green : Colors.black)
+                  .withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Icon
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.casino_rounded, size: 24, color: iconColor),
+            ),
+            const SizedBox(width: 14),
+
+            // Status text
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Heutige Herausforderung',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.45)
+                          : Colors.black.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  if (isCompleted) ...[
+                    Row(
+                      children: [
+                        Text(
+                          '${game!.finalScore ?? game.runningTotal} Punkte',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w700),
+                        ),
+                        rankAsync.when(
+                          data: (rank) => rank == null
+                              ? const SizedBox.shrink()
+                              : Padding(
+                                  padding: const EdgeInsets.only(left: 8),
+                                  child: Text(
+                                    rank == 1 ? '👑 #1' : '· Platz $rank',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: rank == 1
+                                          ? const Color(0xFFFFB300)
+                                          : (isDark
+                                              ? Colors.white54
+                                              : Colors.black45),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, __) => const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
+                  ] else if (isInProgress) ...[
+                    Text(
+                      'Läuft · Zug ${game.currentTurn + 1} / 13',
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                  ] else ...[
+                    const Text(
+                      'Noch nicht gespielt',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            Icon(
+              isCompleted
+                  ? Icons.leaderboard_outlined
+                  : Icons.arrow_forward_ios,
+              size: isCompleted ? 20 : 14,
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.25)
+                  : Colors.black.withValues(alpha: 0.2),
+            ),
+          ],
+        ),
       ),
     );
   }

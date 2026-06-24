@@ -6,6 +6,7 @@ class AvatarWidget extends StatelessWidget {
   final String? name;
   final double radius;
   final bool isAlive;
+  final bool showCrown;
 
   const AvatarWidget({
     super.key,
@@ -13,6 +14,7 @@ class AvatarWidget extends StatelessWidget {
     this.name,
     this.radius = 24,
     this.isAlive = true,
+    this.showCrown = false,
   });
 
   @override
@@ -33,6 +35,7 @@ class AvatarWidget extends StatelessWidget {
 
     if (!isAlive) {
       return Stack(
+        clipBehavior: Clip.none,
         children: [
           ColorFiltered(
             colorFilter: const ColorFilter.matrix([
@@ -51,13 +54,35 @@ class AvatarWidget extends StatelessWidget {
         ],
       );
     }
+
+    if (showCrown) {
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          avatar,
+          Positioned(
+            top: -(radius * 0.45),
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Text(
+                '👑',
+                style: TextStyle(fontSize: radius * 0.65),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return avatar;
   }
 
   Widget _placeholder(String initials, BuildContext context) {
     return CircleAvatar(
       radius: radius,
-      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+      backgroundColor:
+          Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
       child: Text(
         initials,
         style: TextStyle(

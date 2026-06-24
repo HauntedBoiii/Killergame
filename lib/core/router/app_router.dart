@@ -15,6 +15,8 @@ import 'package:moerderspiel/presentation/screens/game/report_kill_screen.dart';
 import 'package:moerderspiel/presentation/screens/game/target_screen.dart';
 import 'package:moerderspiel/presentation/screens/game/tasks_screen.dart';
 import 'package:moerderspiel/presentation/screens/home/home_screen.dart';
+import 'package:moerderspiel/presentation/screens/kniffel/kniffel_leaderboard_screen.dart';
+import 'package:moerderspiel/presentation/screens/kniffel/kniffel_screen.dart';
 import 'package:moerderspiel/presentation/screens/profile/profile_screen.dart';
 import 'package:moerderspiel/presentation/screens/splash_screen.dart';
 
@@ -74,6 +76,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/auth/register', builder: (_, __) => const RegisterScreen()),
       GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+      GoRoute(path: '/kniffel', builder: (_, __) => const KniffelScreen()),
+      GoRoute(
+        path: '/kniffel/leaderboard',
+        builder: (_, __) => const KniffelLeaderboardScreen(),
+      ),
       GoRoute(path: '/game/create', builder: (_, __) => const CreateGameScreen()),
       GoRoute(path: '/game/join', builder: (_, state) {
         final code = state.uri.queryParameters['code'];
