@@ -463,6 +463,7 @@ class _TaskManagementSectionState extends ConsumerState<_TaskManagementSection> 
               const Text('Schwierigkeit', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
               SegmentedButton<int>(
+                showSelectedIcon: false,
                 segments: const [
                   ButtonSegment(value: 1, label: Text('⭐')),
                   ButtonSegment(value: 2, label: Text('⭐⭐')),

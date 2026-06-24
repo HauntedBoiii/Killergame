@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:moerderspiel/core/utils/helpers.dart';
 import 'package:moerderspiel/data/models/game.dart';
+import 'package:moerderspiel/data/models/task.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
 import 'package:moerderspiel/presentation/widgets/common/app_button.dart';
 import 'package:moerderspiel/presentation/widgets/common/app_text_field.dart';
@@ -130,6 +131,11 @@ class _CreateGameScreenState extends ConsumerState<CreateGameScreen> {
                 ),
               ],
             ),
+
+            if (_mode == GameMode.task) ...[
+              const SizedBox(height: 16),
+              const _AdminTaskPoolCard(),
+            ],
 
             if (_mode == GameMode.task) ...[
               const SizedBox(height: 16),
@@ -372,6 +378,198 @@ class _SettingsTile extends StatelessWidget {
           trailing,
         ],
       ),
+    );
+  }
+}
+
+// ── Admin Task Pool Card (game-independent) ────────────────
+
+class _AdminTaskPoolCard extends ConsumerStatefulWidget {
+  const _AdminTaskPoolCard();
+
+  @override
+  ConsumerState<_AdminTaskPoolCard> createState() => _AdminTaskPoolCardState();
+}
+
+class _AdminTaskPoolCardState extends ConsumerState<_AdminTaskPoolCard> {
+  bool _saving = false;
+
+  Future<void> _showAddDialog() async {
+    final descCtrl = TextEditingController();
+    int difficulty = 1;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Aufgabe erstellen'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: descCtrl,
+                autofocus: true,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Beschreibung',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Schwierigkeit', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              SegmentedButton<int>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 1, label: Text('⭐')),
+                  ButtonSegment(value: 2, label: Text('⭐⭐')),
+                  ButtonSegment(value: 3, label: Text('⭐⭐⭐')),
+                ],
+                selected: {difficulty},
+                onSelectionChanged: (s) => setDialogState(() => difficulty = s.first),
+                expandedInsets: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+            ElevatedButton(
+              onPressed: descCtrl.text.isNotEmpty ? () => Navigator.pop(ctx, true) : null,
+              child: const Text('Erstellen'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true && descCtrl.text.trim().isNotEmpty) {
+      setState(() => _saving = true);
+      try {
+        await ref.read(taskRepositoryProvider).createAdminTask(
+              description: descCtrl.text.trim(),
+              difficulty: difficulty,
+            );
+        ref.invalidate(adminTasksProvider);
+        if (mounted) showSnack(context, 'Aufgabe erstellt!');
+      } catch (e) {
+        if (mounted) showSnack(context, 'Fehler: $e', isError: true);
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+    }
+  }
+
+  Future<void> _delete(Task task) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Aufgabe löschen?'),
+        content: Text('"${task.description}" dauerhaft löschen?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      try {
+        await ref.read(taskRepositoryProvider).deleteAdminTask(task.id);
+        ref.invalidate(adminTasksProvider);
+      } catch (e) {
+        if (mounted) showSnack(context, 'Fehler: $e', isError: true);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tasksAsync = ref.watch(adminTasksProvider);
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.playlist_add_check, size: 16, color: Colors.purple),
+            const SizedBox(width: 6),
+            Text('Mein Aufgaben-Pool', style: theme.textTheme.titleSmall?.copyWith(
+              color: Colors.purple,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            )),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.cardTheme.color,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.purple.withValues(alpha: 0.25)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Eigene Aufgaben',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  _saving
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : IconButton(
+                          icon: const Icon(Icons.add_circle_outline, size: 20),
+                          onPressed: _showAddDialog,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Neue Aufgabe erstellen',
+                        ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Wiederverwendbar in allen deinen Spielen. Einzelne Aufgaben können pro Spiel deaktiviert werden.',
+                style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+              ),
+              const SizedBox(height: 8),
+              tasksAsync.when(
+                data: (tasks) {
+                  if (tasks.isEmpty) {
+                    return Text(
+                      'Noch keine Aufgaben. Tippe auf + um eine zu erstellen.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    );
+                  }
+                  return Column(
+                    children: tasks.map((task) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(task.description, style: const TextStyle(fontSize: 13)),
+                      subtitle: Text('${'⭐' * task.difficulty}', style: const TextStyle(fontSize: 11)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                        onPressed: () => _delete(task),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    )).toList(),
+                  );
+                },
+                loading: () => const LinearProgressIndicator(),
+                error: (e, _) => Text('Fehler: $e', style: const TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

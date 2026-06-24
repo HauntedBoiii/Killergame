@@ -70,6 +70,12 @@ final myTasksProvider = StreamProvider.autoDispose.family<List<PlayerTask>, Stri
   return ref.watch(taskRepositoryProvider).watchMyTasks(gameId).ignoreRealtimeErrors();
 });
 
+// ── Admin task pool (global, no game context) ──────────────
+
+final adminTasksProvider = FutureProvider.autoDispose<List<Task>>((ref) {
+  return ref.read(taskRepositoryProvider).getAdminOwnedTasks();
+});
+
 // ── Admin task pool with per-game enabled state ────────────
 
 typedef AdminTaskEntry = ({Task task, bool isEnabled});
