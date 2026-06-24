@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:moerderspiel/core/utils/helpers.dart';
 import 'package:moerderspiel/data/models/task.dart';
-import 'package:moerderspiel/presentation/providers/auth_provider.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
-import 'package:moerderspiel/presentation/widgets/common/app_button.dart';
 
 class TasksScreen extends ConsumerWidget {
   final String gameId;
@@ -19,16 +16,7 @@ class TasksScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Meine Aufgaben'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _showAddTaskDialog(context, ref),
-            tooltip: 'Aufgabe hinzufügen',
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Meine Aufgaben')),
       body: myTasksAsync.when(
         data: (tasks) {
           if (tasks.isEmpty) {
@@ -98,81 +86,6 @@ class TasksScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _showAddTaskDialog(BuildContext context, WidgetRef ref) async {
-    final descCtrl = TextEditingController();
-    String category = 'social';
-    int difficulty = 1;
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
-        child: StatefulBuilder(
-          builder: (ctx, setState) => Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Eigene Aufgabe erstellen', style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: descCtrl,
-                autofocus: true,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Aufgabenbeschreibung',
-                  hintText: 'Bringe dein Ziel dazu...',
-                ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: category,
-                decoration: const InputDecoration(labelText: 'Kategorie'),
-                items: const [
-                  DropdownMenuItem(value: 'social', child: Text('Sozial')),
-                  DropdownMenuItem(value: 'physical', child: Text('Körperlich')),
-                  DropdownMenuItem(value: 'object', child: Text('Gegenstand')),
-                  DropdownMenuItem(value: 'custom', child: Text('Sonstige')),
-                ],
-                onChanged: (v) => setState(() => category = v!),
-              ),
-              const SizedBox(height: 16),
-              Text('Schwierigkeit: ${'⭐' * difficulty}'),
-              Slider(
-                value: difficulty.toDouble(),
-                min: 1,
-                max: 3,
-                divisions: 2,
-                label: difficulty.toString(),
-                onChanged: (v) => setState(() => difficulty = v.round()),
-              ),
-              const SizedBox(height: 16),
-              AppButton(
-                label: 'Aufgabe erstellen',
-                onPressed: () async {
-                  if (descCtrl.text.trim().isEmpty) return;
-                  try {
-                    final userId = ref.read(currentUserIdProvider) ?? '';
-                    await ref.read(taskRepositoryProvider).createCustomTask(
-                          description: descCtrl.text.trim(),
-                          category: category,
-                          difficulty: difficulty,
-                          gameId: gameId,
-                          playerId: userId,
-                        );
-                    ref.invalidate(myTasksProvider(gameId));
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  } catch (e) {
-                    if (ctx.mounted) showSnack(ctx, 'Fehler: $e', isError: true);
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _TaskCard extends StatelessWidget {

@@ -70,6 +70,12 @@ final myTasksProvider = StreamProvider.autoDispose.family<List<PlayerTask>, Stri
   return ref.watch(taskRepositoryProvider).watchMyTasks(gameId).ignoreRealtimeErrors();
 });
 
+// ── All custom tasks in a game (admin view) ────────────────
+
+final gameCustomTasksProvider = FutureProvider.autoDispose.family<List<PlayerTask>, String>((ref, gameId) {
+  return ref.read(taskRepositoryProvider).getGameCustomTasks(gameId);
+});
+
 // ── Finished games ─────────────────────────────────────────
 
 final finishedGamesProvider = FutureProvider.autoDispose<List<Game>>((ref) {

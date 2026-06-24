@@ -54,6 +54,23 @@ class TaskRepository {
     return task;
   }
 
+  Future<List<PlayerTask>> getGameCustomTasks(String gameId) async {
+    final data = await _client
+        .from('player_tasks')
+        .select('*, tasks(*)')
+        .eq('game_id', gameId)
+        .order('created_at');
+    final all = (data as List)
+        .map((e) => PlayerTask.fromJson(e as Map<String, dynamic>))
+        .toList();
+    return all.where((pt) => pt.task != null && !pt.task!.isBuiltin).toList();
+  }
+
+  Future<void> deleteCustomTask(String playerTaskId, String taskId) async {
+    await _client.from('player_tasks').delete().eq('id', playerTaskId);
+    await _client.from('tasks').delete().eq('id', taskId);
+  }
+
   Stream<List<PlayerTask>> watchMyTasks(String gameId) {
     return _client
         .from('player_tasks')

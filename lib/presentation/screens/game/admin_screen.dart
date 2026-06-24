@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:moerderspiel/core/utils/helpers.dart';
 import 'package:moerderspiel/data/models/game.dart';
 import 'package:moerderspiel/data/models/game_player.dart';
+import 'package:moerderspiel/data/models/task.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
 import 'package:moerderspiel/presentation/widgets/common/app_button.dart';
 import 'package:moerderspiel/presentation/widgets/game/player_card.dart';
@@ -31,6 +32,14 @@ class AdminScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
                 _SectionTitle(title: 'Spieleinstellungen'),
                 _SettingsEditorSection(game: game, gameId: gameId),
+                if (game.mode == GameMode.task) ...[
+                  const SizedBox(height: 24),
+                  _SectionTitle(title: 'Aufgaben verwalten'),
+                  _TaskManagementSection(
+                    gameId: gameId,
+                    players: playersAsync.value ?? [],
+                  ),
+                ],
               ],
               const SizedBox(height: 24),
               _SectionTitle(title: 'Spieler verwalten'),
@@ -410,6 +419,197 @@ class _SettingsEditorSectionState extends ConsumerState<_SettingsEditorSection> 
             onPressed: _loading ? null : _save,
             isLoading: _loading,
             icon: Icons.save_outlined,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Task Management Section (Lobby only) ──────────────────
+
+class _TaskManagementSection extends ConsumerStatefulWidget {
+  final String gameId;
+  final List<GamePlayer> players;
+
+  const _TaskManagementSection({required this.gameId, required this.players});
+
+  @override
+  ConsumerState<_TaskManagementSection> createState() => _TaskManagementSectionState();
+}
+
+class _TaskManagementSectionState extends ConsumerState<_TaskManagementSection> {
+  bool _saving = false;
+
+  Future<void> _showAddDialog() async {
+    final descCtrl = TextEditingController();
+    int difficulty = 1;
+    String? selectedPlayerId = widget.players.isNotEmpty ? widget.players.first.playerId : null;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Aufgabe hinzufügen'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: descCtrl,
+                autofocus: true,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Beschreibung',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Schwierigkeit', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(value: 1, label: Text('⭐')),
+                  ButtonSegment(value: 2, label: Text('⭐⭐')),
+                  ButtonSegment(value: 3, label: Text('⭐⭐⭐')),
+                ],
+                selected: {difficulty},
+                onSelectionChanged: (s) => setDialogState(() => difficulty = s.first),
+                expandedInsets: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(labelText: 'Spieler', border: OutlineInputBorder()),
+                value: selectedPlayerId,
+                items: widget.players
+                    .map((p) => DropdownMenuItem(value: p.playerId, child: Text(p.displayName)))
+                    .toList(),
+                onChanged: (v) => setDialogState(() => selectedPlayerId = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+            ElevatedButton(
+              onPressed: descCtrl.text.isNotEmpty ? () => Navigator.pop(ctx, true) : null,
+              child: const Text('Hinzufügen'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true && selectedPlayerId != null && descCtrl.text.trim().isNotEmpty) {
+      setState(() => _saving = true);
+      try {
+        await ref.read(taskRepositoryProvider).createCustomTask(
+              description: descCtrl.text.trim(),
+              category: 'custom',
+              difficulty: difficulty,
+              gameId: widget.gameId,
+              playerId: selectedPlayerId!,
+            );
+        ref.invalidate(gameCustomTasksProvider(widget.gameId));
+        if (mounted) showSnack(context, 'Aufgabe hinzugefügt!');
+      } catch (e) {
+        if (mounted) showSnack(context, 'Fehler: $e', isError: true);
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+    }
+  }
+
+  Future<void> _delete(PlayerTask pt) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Aufgabe löschen?'),
+        content: Text('"${pt.task?.description ?? ''}" wirklich löschen?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      try {
+        await ref.read(taskRepositoryProvider).deleteCustomTask(pt.id, pt.taskId);
+        ref.invalidate(gameCustomTasksProvider(widget.gameId));
+      } catch (e) {
+        if (mounted) showSnack(context, 'Fehler: $e', isError: true);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tasksAsync = ref.watch(gameCustomTasksProvider(widget.gameId));
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardTheme.color,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Eigene Aufgaben', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              _saving
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : IconButton(
+                      icon: const Icon(Icons.add_circle_outline, size: 20),
+                      onPressed: widget.players.isEmpty ? null : _showAddDialog,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      tooltip: 'Aufgabe hinzufügen',
+                    ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          tasksAsync.when(
+            data: (tasks) {
+              if (tasks.isEmpty) {
+                return Text(
+                  'Noch keine eigenen Aufgaben. Tippe auf + um eine hinzuzufügen.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                );
+              }
+              return Column(
+                children: tasks.map((pt) {
+                  final playerName = widget.players
+                      .where((p) => p.playerId == pt.playerId)
+                      .map((p) => p.displayName)
+                      .firstOrNull ?? '–';
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(pt.task?.description ?? '–', style: const TextStyle(fontSize: 13)),
+                    subtitle: Text(
+                      '→ $playerName  ·  ${'⭐' * (pt.task?.difficulty ?? 1)}',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                      onPressed: () => _delete(pt),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+            loading: () => const LinearProgressIndicator(),
+            error: (e, _) => Text('Fehler: $e', style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
