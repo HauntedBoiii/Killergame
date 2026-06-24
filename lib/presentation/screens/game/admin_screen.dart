@@ -35,10 +35,7 @@ class AdminScreen extends ConsumerWidget {
                 if (game.mode == GameMode.task) ...[
                   const SizedBox(height: 24),
                   _SectionTitle(title: 'Aufgaben verwalten'),
-                  _TaskManagementSection(
-                    gameId: gameId,
-                    players: playersAsync.value ?? [],
-                  ),
+                  _TaskManagementSection(gameId: gameId),
                 ],
               ],
               const SizedBox(height: 24),
@@ -430,9 +427,8 @@ class _SettingsEditorSectionState extends ConsumerState<_SettingsEditorSection> 
 
 class _TaskManagementSection extends ConsumerStatefulWidget {
   final String gameId;
-  final List<GamePlayer> players;
 
-  const _TaskManagementSection({required this.gameId, required this.players});
+  const _TaskManagementSection({required this.gameId});
 
   @override
   ConsumerState<_TaskManagementSection> createState() => _TaskManagementSectionState();
@@ -444,7 +440,6 @@ class _TaskManagementSectionState extends ConsumerState<_TaskManagementSection> 
   Future<void> _showAddDialog() async {
     final descCtrl = TextEditingController();
     int difficulty = 1;
-    String? selectedPlayerId = widget.players.isNotEmpty ? widget.players.first.playerId : null;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -477,15 +472,6 @@ class _TaskManagementSectionState extends ConsumerState<_TaskManagementSection> 
                 onSelectionChanged: (s) => setDialogState(() => difficulty = s.first),
                 expandedInsets: EdgeInsets.zero,
               ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'Spieler', border: OutlineInputBorder()),
-                value: selectedPlayerId,
-                items: widget.players
-                    .map((p) => DropdownMenuItem(value: p.playerId, child: Text(p.displayName)))
-                    .toList(),
-                onChanged: (v) => setDialogState(() => selectedPlayerId = v),
-              ),
             ],
           ),
           actions: [
@@ -499,18 +485,16 @@ class _TaskManagementSectionState extends ConsumerState<_TaskManagementSection> 
       ),
     );
 
-    if (confirmed == true && selectedPlayerId != null && descCtrl.text.trim().isNotEmpty) {
+    if (confirmed == true && descCtrl.text.trim().isNotEmpty) {
       setState(() => _saving = true);
       try {
-        await ref.read(taskRepositoryProvider).createCustomTask(
-              description: descCtrl.text.trim(),
-              category: 'custom',
-              difficulty: difficulty,
+        await ref.read(taskRepositoryProvider).createGameTask(
               gameId: widget.gameId,
-              playerId: selectedPlayerId!,
+              description: descCtrl.text.trim(),
+              difficulty: difficulty,
             );
         ref.invalidate(gameCustomTasksProvider(widget.gameId));
-        if (mounted) showSnack(context, 'Aufgabe hinzugefügt!');
+        if (mounted) showSnack(context, 'Aufgabe zum Pool hinzugefügt!');
       } catch (e) {
         if (mounted) showSnack(context, 'Fehler: $e', isError: true);
       } finally {
@@ -519,12 +503,12 @@ class _TaskManagementSectionState extends ConsumerState<_TaskManagementSection> 
     }
   }
 
-  Future<void> _delete(PlayerTask pt) async {
+  Future<void> _delete(Task task) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Aufgabe löschen?'),
-        content: Text('"${pt.task?.description ?? ''}" wirklich löschen?'),
+        content: Text('"${task.description}" wirklich löschen?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
           ElevatedButton(
@@ -537,7 +521,7 @@ class _TaskManagementSectionState extends ConsumerState<_TaskManagementSection> 
     );
     if (confirm == true) {
       try {
-        await ref.read(taskRepositoryProvider).deleteCustomTask(pt.id, pt.taskId);
+        await ref.read(taskRepositoryProvider).deleteGameTask(task.id);
         ref.invalidate(gameCustomTasksProvider(widget.gameId));
       } catch (e) {
         if (mounted) showSnack(context, 'Fehler: $e', isError: true);
@@ -568,12 +552,17 @@ class _TaskManagementSectionState extends ConsumerState<_TaskManagementSection> 
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                   : IconButton(
                       icon: const Icon(Icons.add_circle_outline, size: 20),
-                      onPressed: widget.players.isEmpty ? null : _showAddDialog,
+                      onPressed: _showAddDialog,
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                       tooltip: 'Aufgabe hinzufügen',
                     ),
             ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Werden beim Spielstart zufällig verteilt.',
+            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
           ),
           const SizedBox(height: 8),
           tasksAsync.when(
@@ -585,27 +574,18 @@ class _TaskManagementSectionState extends ConsumerState<_TaskManagementSection> 
                 );
               }
               return Column(
-                children: tasks.map((pt) {
-                  final playerName = widget.players
-                      .where((p) => p.playerId == pt.playerId)
-                      .map((p) => p.displayName)
-                      .firstOrNull ?? '–';
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    title: Text(pt.task?.description ?? '–', style: const TextStyle(fontSize: 13)),
-                    subtitle: Text(
-                      '→ $playerName  ·  ${'⭐' * (pt.task?.difficulty ?? 1)}',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
-                      onPressed: () => _delete(pt),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  );
-                }).toList(),
+                children: tasks.map((task) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(task.description, style: const TextStyle(fontSize: 13)),
+                  subtitle: Text('${'⭐' * task.difficulty}', style: const TextStyle(fontSize: 11)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                    onPressed: () => _delete(task),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                )).toList(),
               );
             },
             loading: () => const LinearProgressIndicator(),

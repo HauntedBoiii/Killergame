@@ -54,20 +54,34 @@ class TaskRepository {
     return task;
   }
 
-  Future<List<PlayerTask>> getGameCustomTasks(String gameId) async {
+  Future<List<Task>> getGamePoolTasks(String gameId) async {
     final data = await _client
-        .from('player_tasks')
-        .select('*, tasks(*)')
+        .from('tasks')
+        .select()
         .eq('game_id', gameId)
+        .eq('is_builtin', false)
         .order('created_at');
-    final all = (data as List)
-        .map((e) => PlayerTask.fromJson(e as Map<String, dynamic>))
-        .toList();
-    return all.where((pt) => pt.task != null && !pt.task!.isBuiltin).toList();
+    return (data as List).map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<void> deleteCustomTask(String playerTaskId, String taskId) async {
-    await _client.from('player_tasks').delete().eq('id', playerTaskId);
+  Future<Task> createGameTask({
+    required String gameId,
+    required String description,
+    required int difficulty,
+  }) async {
+    final userId = _client.auth.currentUser!.id;
+    final data = await _client.from('tasks').insert({
+      'description': description,
+      'category': 'custom',
+      'difficulty': difficulty,
+      'is_builtin': false,
+      'created_by': userId,
+      'game_id': gameId,
+    }).select().single();
+    return Task.fromJson(data);
+  }
+
+  Future<void> deleteGameTask(String taskId) async {
     await _client.from('tasks').delete().eq('id', taskId);
   }
 
