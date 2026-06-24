@@ -54,18 +54,35 @@ class TaskRepository {
     return task;
   }
 
-  Future<List<Task>> getGamePoolTasks(String gameId) async {
+  Future<List<Task>> getAdminOwnedTasks() async {
+    final userId = _client.auth.currentUser!.id;
     final data = await _client
         .from('tasks')
         .select()
-        .eq('game_id', gameId)
+        .eq('created_by', userId)
         .eq('is_builtin', false)
         .order('created_at');
     return (data as List).map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<Task> createGameTask({
-    required String gameId,
+  Future<Set<String>> getDisabledTaskIds(String gameId) async {
+    final data = await _client
+        .from('game_task_disabled')
+        .select('task_id')
+        .eq('game_id', gameId);
+    return {for (final row in data as List) row['task_id'] as String};
+  }
+
+  Future<void> setTaskDisabled(String gameId, String taskId, {required bool disabled}) async {
+    if (disabled) {
+      await _client.from('game_task_disabled').insert({'game_id': gameId, 'task_id': taskId});
+    } else {
+      await _client.from('game_task_disabled').delete()
+          .eq('game_id', gameId).eq('task_id', taskId);
+    }
+  }
+
+  Future<Task> createAdminTask({
     required String description,
     required int difficulty,
   }) async {
@@ -76,12 +93,11 @@ class TaskRepository {
       'difficulty': difficulty,
       'is_builtin': false,
       'created_by': userId,
-      'game_id': gameId,
     }).select().single();
     return Task.fromJson(data);
   }
 
-  Future<void> deleteGameTask(String taskId) async {
+  Future<void> deleteAdminTask(String taskId) async {
     await _client.from('tasks').delete().eq('id', taskId);
   }
 

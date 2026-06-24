@@ -70,10 +70,15 @@ final myTasksProvider = StreamProvider.autoDispose.family<List<PlayerTask>, Stri
   return ref.watch(taskRepositoryProvider).watchMyTasks(gameId).ignoreRealtimeErrors();
 });
 
-// ── All custom tasks in a game (admin view) ────────────────
+// ── Admin task pool with per-game enabled state ────────────
 
-final gameCustomTasksProvider = FutureProvider.autoDispose.family<List<Task>, String>((ref, gameId) {
-  return ref.read(taskRepositoryProvider).getGamePoolTasks(gameId);
+typedef AdminTaskEntry = ({Task task, bool isEnabled});
+
+final adminTaskPoolProvider = FutureProvider.autoDispose.family<List<AdminTaskEntry>, String>((ref, gameId) async {
+  final repo = ref.read(taskRepositoryProvider);
+  final tasks = await repo.getAdminOwnedTasks();
+  final disabled = await repo.getDisabledTaskIds(gameId);
+  return tasks.map((t) => (task: t, isEnabled: !disabled.contains(t.id))).toList();
 });
 
 // ── Finished games ─────────────────────────────────────────
