@@ -10,6 +10,7 @@ class AvatarWidget extends StatelessWidget {
   final bool isAlive;
   final bool showCrown;
   final bool showClown;
+  final bool showGoldenGlow;
 
   const AvatarWidget({
     super.key,
@@ -19,6 +20,7 @@ class AvatarWidget extends StatelessWidget {
     this.isAlive = true,
     this.showCrown = false,
     this.showClown = false,
+    this.showGoldenGlow = false,
   });
 
   @override
@@ -59,27 +61,31 @@ class AvatarWidget extends StatelessWidget {
       );
     }
 
-    if (showCrown) {
-      return Stack(
-        clipBehavior: Clip.none,
-        children: [
-          avatar,
-          Positioned(
-            top: -(radius * 0.45),
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Text(
-                '👑',
-                style: TextStyle(fontSize: radius * 0.65),
-              ),
+    // Golden glow: wrap avatar in glowing container before any overlays
+    if (showGoldenGlow) {
+      avatar = Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFFB300).withValues(alpha: 0.75),
+              blurRadius: radius * 0.8,
+              spreadRadius: radius * 0.2,
             ),
-          ),
-        ],
+            BoxShadow(
+              color: const Color(0xFFFF6F00).withValues(alpha: 0.35),
+              blurRadius: radius * 1.6,
+              spreadRadius: radius * 0.05,
+            ),
+          ],
+        ),
+        child: avatar,
       );
     }
 
-    if (showClown) {
+    // Crown and clown are additive overlays (crown takes priority if both)
+    final String? overlayEmoji = showCrown ? '👑' : (showClown ? '🤡' : null);
+    if (overlayEmoji != null) {
       return Stack(
         clipBehavior: Clip.none,
         children: [
@@ -89,10 +95,7 @@ class AvatarWidget extends StatelessWidget {
             left: 0,
             right: 0,
             child: Center(
-              child: Text(
-                '🤡',
-                style: TextStyle(fontSize: radius * 0.65),
-              ),
+              child: Text(overlayEmoji, style: TextStyle(fontSize: radius * 0.65)),
             ),
           ),
         ],
@@ -140,10 +143,11 @@ class KniffelAwareAvatarWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final badges = ref.watch(dailyKniffelBadgesProvider).value;
-    final showCrown =
-        userId != null && (badges?.winners.contains(userId) ?? false);
-    final showClown =
-        userId != null && (badges?.lastPlace.contains(userId) ?? false);
+    final alltimeLeaderId = ref.watch(alltimeLeaderIdProvider).value;
+
+    final showCrown = userId != null && (badges?.winners.contains(userId) ?? false);
+    final showClown = userId != null && (badges?.lastPlace.contains(userId) ?? false);
+    final showGoldenGlow = userId != null && userId == alltimeLeaderId;
 
     return AvatarWidget(
       imageUrl: imageUrl,
@@ -152,6 +156,7 @@ class KniffelAwareAvatarWidget extends ConsumerWidget {
       isAlive: isAlive,
       showCrown: showCrown,
       showClown: showClown,
+      showGoldenGlow: showGoldenGlow,
     );
   }
 }

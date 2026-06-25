@@ -65,6 +65,14 @@ final dailyKniffelWinnerIdProvider = FutureProvider.autoDispose<String?>(
   (ref) => ref.read(kniffelRepositoryProvider).getDailyWinnerId(),
 );
 
+/// User ID of the global alltime leader (highest total score ever).
+final alltimeLeaderIdProvider = FutureProvider.autoDispose<String?>((ref) async {
+  final entries = await ref
+      .read(kniffelRepositoryProvider)
+      .alltimeLeaderboard(gameId: null);
+  return entries.isEmpty ? null : entries.first.userId;
+});
+
 /// Winners (rank 1) and last-place user IDs for today – used for crown/clown badges.
 final dailyKniffelBadgesProvider = FutureProvider.autoDispose<
     ({Set<String> winners, Set<String> lastPlace})>((ref) async {

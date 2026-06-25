@@ -217,6 +217,6 @@ class KniffelAlltimeEntry {
         daysPlayed: (json['days_played'] as num).toInt(),
         bestScore: (json['best_score'] as num).toInt(),
         dailyWins: (json['daily_wins'] as num).toInt(),
-        dailyLosses: (json['daily_losses'] as num).toInt(),
+        dailyLosses: (json['daily_losses'] as num?)?.toInt() ?? 0,
       );
 }
