@@ -314,13 +314,11 @@ class _DailyRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
 
-          // Avatar with optional crown or clown
-          AvatarWidget(
+          KniffelAwareAvatarWidget(
             imageUrl: entry.avatarUrl,
             name: entry.username,
+            userId: entry.userId,
             radius: 20,
-            showCrown: isWinner,
-            showClown: isLast,
           ),
           const SizedBox(width: 12),
 
@@ -486,11 +484,11 @@ class _AlltimeRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              AvatarWidget(
+              KniffelAwareAvatarWidget(
                 imageUrl: entry.avatarUrl,
                 name: entry.username,
+                userId: entry.userId,
                 radius: 20,
-                showCrown: isToday,
               ),
               const SizedBox(width: 12),
               Expanded(
