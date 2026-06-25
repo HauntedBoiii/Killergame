@@ -5,8 +5,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:moerderspiel/core/models/loot_item.dart';
 import 'package:moerderspiel/data/models/kniffel_game.dart';
 import 'package:moerderspiel/presentation/providers/kniffel_provider.dart';
+import 'package:moerderspiel/presentation/providers/lootbox_provider.dart';
 import 'package:moerderspiel/presentation/widgets/kniffel/dice_widget.dart';
 import 'package:moerderspiel/presentation/widgets/kniffel/kniffel_tile_scorecard.dart';
 import 'package:moerderspiel/presentation/widgets/kniffel/scorecard_widget.dart';
@@ -154,6 +156,10 @@ class _KniffelScreenState extends ConsumerState<KniffelScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (game.isCompleted) return _CompletedView(game: game);
+          final diceDesign = ref.watch(lootStateProvider).maybeWhen(
+            data: (s) => s.activeDiceDesign,
+            orElse: () => DiceDesign.current,
+          );
           return _GameView(
             game: game,
             displayDice: _displayDice,
@@ -162,6 +168,7 @@ class _KniffelScreenState extends ConsumerState<KniffelScreen> {
             onRoll: _roll,
             onToggleHold: _toggleHold,
             onSelectCategory: _selectCategory,
+            diceDesign: diceDesign,
           );
         },
       ),
@@ -175,6 +182,7 @@ class _GameView extends StatelessWidget {
   final KniffelGame game;
   final List<int> displayDice;
   final List<bool> heldDice;
+  final DiceDesign diceDesign;
   final bool isRolling;
   final VoidCallback onRoll;
   final void Function(int) onToggleHold;
@@ -188,6 +196,7 @@ class _GameView extends StatelessWidget {
     required this.onRoll,
     required this.onToggleHold,
     required this.onSelectCategory,
+    required this.diceDesign,
   });
 
   @override
@@ -222,6 +231,7 @@ class _GameView extends StatelessWidget {
           onToggleHold: onToggleHold,
           onRoll: onRoll,
           isDark: isDark,
+          diceDesign: diceDesign,
         ),
       ],
     );
@@ -332,6 +342,7 @@ class _DiceBar extends StatelessWidget {
   final void Function(int) onToggleHold;
   final VoidCallback onRoll;
   final bool isDark;
+  final DiceDesign diceDesign;
 
   const _DiceBar({
     required this.game,
@@ -341,6 +352,7 @@ class _DiceBar extends StatelessWidget {
     required this.onToggleHold,
     required this.onRoll,
     required this.isDark,
+    required this.diceDesign,
   });
 
   @override
@@ -380,6 +392,7 @@ class _DiceBar extends StatelessWidget {
                   enabled: hasRolled && !mustSelect && !isRolling,
                   onTap: () => onToggleHold(i),
                   size: 62,
+                  design: diceDesign,
                 )
                     .animate(
                       key: ValueKey('die_$i'),

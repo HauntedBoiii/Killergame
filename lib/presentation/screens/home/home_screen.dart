@@ -10,7 +10,9 @@ import 'package:moerderspiel/presentation/providers/auth_provider.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
 import 'package:moerderspiel/presentation/providers/kniffel_provider.dart';
 import 'package:moerderspiel/presentation/providers/theme_provider.dart';
-import 'package:moerderspiel/presentation/widgets/common/avatar_widget.dart';
+import 'package:moerderspiel/core/models/loot_item.dart';
+import 'package:moerderspiel/presentation/providers/lootbox_provider.dart';
+import 'package:moerderspiel/presentation/widgets/profile_card/profile_card_widget.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -160,18 +162,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
             // Welcome banner
             profile.when(
-              data: (p) => GestureDetector(
-                onTap: () => context.push('/profile'),
-                child: _WelcomeBanner(
-                  username: p?.username,
-                  avatarUrl: p?.avatarUrl,
-                  userId: p?.id,
-                  kills: p?.totalKills ?? 0,
-                  wins: p?.totalWins ?? 0,
-                  games: p?.totalGames ?? 0,
-                  onDiceTap: () => context.push('/kniffel'),
-                ).animate(key: const ValueKey('home_welcome')).fadeIn().slideY(begin: -0.1),
-              ),
+              data: (p) {
+                final activeDesign = ref.watch(lootStateProvider).maybeWhen(
+                  data: (s) => s.activeCardDesign,
+                  orElse: () => CardDesign.current,
+                );
+                return GestureDetector(
+                  onTap: () => context.push('/profile'),
+                  child: ProfileCardWidget(
+                    design: activeDesign,
+                    data: ProfileCardData(
+                      username:  p?.username  ?? 'Mörder',
+                      avatarUrl: p?.avatarUrl,
+                      userId:    p?.id,
+                      kills:     p?.totalKills  ?? 0,
+                      wins:      p?.totalWins   ?? 0,
+                      games:     p?.totalGames  ?? 0,
+                      onDiceTap: () => context.push('/kniffel'),
+                    ),
+                  ).animate(key: const ValueKey('home_welcome')).fadeIn().slideY(begin: -0.1),
+                );
+              },
               loading: () => const SizedBox(height: 120, child: Center(child: CircularProgressIndicator())),
               error: (_, __) => const SizedBox.shrink(),
             ),
@@ -251,150 +262,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-// ── Welcome Banner ─────────────────────────────────────────
-
-class _WelcomeBanner extends StatelessWidget {
-  final String? username;
-  final String? avatarUrl;
-  final String? userId;
-  final int kills;
-  final int wins;
-  final int games;
-  final VoidCallback? onDiceTap;
-
-  const _WelcomeBanner({
-    required this.username,
-    required this.avatarUrl,
-    required this.userId,
-    required this.kills,
-    required this.wins,
-    required this.games,
-    this.onDiceTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFB71C1C), Color(0xFF6D0000)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFB71C1C).withValues(alpha: 0.35),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 2),
-            ),
-            child: KniffelAwareAvatarWidget(
-              imageUrl: avatarUrl,
-              name: username,
-              radius: 32,
-              userId: userId,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Willkommen,',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
-                ),
-                Text(
-                  username ?? 'Mörder',
-                  style: GoogleFonts.rajdhani(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _MiniStat(icon: '🗡️', value: '$kills', label: 'Kills'),
-                    const SizedBox(width: 12),
-                    _MiniStat(icon: '🏆', value: '$wins', label: 'Wins'),
-                    const SizedBox(width: 12),
-                    _MiniStat(icon: '🎮', value: '$games', label: 'Spiele'),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Pulsing dice button
-          GestureDetector(
-            onTap: onDiceTap,
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.casino_rounded,
-                    color: Colors.white.withValues(alpha: 0.88),
-                    size: 28,
-                  )
-                      .animate(onPlay: (c) => c.repeat(reverse: true))
-                      .scaleXY(
-                          end: 1.16,
-                          duration: 850.ms,
-                          curve: Curves.easeInOut),
-                  const SizedBox(height: 3),
-                  Text(
-                    'WÜRFELN',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      fontSize: 8,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniStat extends StatelessWidget {
-  final String icon;
-  final String value;
-  final String label;
-  const _MiniStat({required this.icon, required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text('$icon $value',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 10)),
-      ],
     );
   }
 }

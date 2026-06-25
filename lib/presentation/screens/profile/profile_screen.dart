@@ -6,6 +6,7 @@ import 'package:moerderspiel/core/services/push_notification_service.dart';
 import 'package:moerderspiel/core/utils/helpers.dart';
 import 'package:moerderspiel/presentation/providers/auth_provider.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
+import 'package:moerderspiel/presentation/providers/lootbox_provider.dart';
 import 'package:moerderspiel/presentation/widgets/common/app_button.dart';
 import 'package:moerderspiel/presentation/widgets/common/avatar_widget.dart';
 
@@ -196,7 +197,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+
+              // Lootbox / Sammlung
+              _LootboxEntryTile(),
+
+              const SizedBox(height: 8),
 
               // Notification status (web only)
               if (PushNotificationService.isPwa()) _NotificationTile(),
@@ -290,6 +296,36 @@ class _NotificationTileState extends State<_NotificationTile> {
           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
           : const Icon(Icons.arrow_forward_ios, size: 14),
       onTap: _loading ? null : _register,
+    );
+  }
+}
+
+class _LootboxEntryTile extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lootAsync = ref.watch(lootStateProvider);
+    final readyCount = lootAsync.maybeWhen(data: (s) => s.readyBoxes.length, orElse: () => 0);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.inventory_2_outlined, color: Color(0xFFEF5350), size: 28),
+          if (readyCount > 0)
+            Positioned(
+              top: -4, right: -6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(color: const Color(0xFFEF5350), borderRadius: BorderRadius.circular(8)),
+                child: Text('$readyCount', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
+              ),
+            ),
+        ],
+      ),
+      title: const Text('Sammlung & Lootboxen'),
+      subtitle: Text(readyCount > 0 ? '$readyCount Box${readyCount != 1 ? 'en' : ''} bereit!' : 'Designs, Credits & Lootboxen'),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+      onTap: () => context.push('/lootbox'),
     );
   }
 }

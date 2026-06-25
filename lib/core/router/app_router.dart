@@ -17,6 +17,7 @@ import 'package:moerderspiel/presentation/screens/game/tasks_screen.dart';
 import 'package:moerderspiel/presentation/screens/home/home_screen.dart';
 import 'package:moerderspiel/presentation/screens/kniffel/kniffel_leaderboard_screen.dart';
 import 'package:moerderspiel/presentation/screens/kniffel/kniffel_screen.dart';
+import 'package:moerderspiel/presentation/screens/lootbox/lootbox_screen.dart';
 import 'package:moerderspiel/presentation/screens/profile/profile_screen.dart';
 import 'package:moerderspiel/presentation/screens/splash_screen.dart';
 
@@ -81,6 +82,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/auth/register',  pageBuilder: (_, s) => _page(const RegisterScreen(), s)),
       GoRoute(path: '/home',           pageBuilder: (_, s) => _page(const HomeScreen(), s)),
       GoRoute(path: '/profile',        pageBuilder: (_, s) => _page(const ProfileScreen(), s)),
+      GoRoute(path: '/lootbox',        pageBuilder: (_, s) => _page(const LootboxScreen(), s)),
       GoRoute(path: '/kniffel',        pageBuilder: (_, s) => _page(const KniffelScreen(), s)),
       GoRoute(path: '/kniffel/leaderboard', pageBuilder: (_, s) => _page(const KniffelLeaderboardScreen(), s)),
       GoRoute(path: '/game/create',    pageBuilder: (_, s) => _page(const CreateGameScreen(), s)),

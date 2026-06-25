@@ -1244,3 +1244,71 @@ DROP TRIGGER IF EXISTS on_kniffel_completed ON public.kniffel_games;
 CREATE TRIGGER on_kniffel_completed
   AFTER UPDATE ON public.kniffel_games
   FOR EACH ROW EXECUTE FUNCTION public.notify_kniffel_completed();
+
+-- ══════════════════════════════════════════════════════════════
+-- LOOTBOX SYSTEM (Migration 012)
+-- ══════════════════════════════════════════════════════════════
+
+-- Seltenheiten: bronze (70%) / silver (20%) / gold (10%)
+-- Karten Bronze: smoke, accent
+-- Karten Silber: glass, neon, wanted
+-- Karten Gold:   bond, sparks
+-- Würfel Bronze: wood, neon, vegas, blood, app_red, digital, crystal
+
+CREATE TABLE public.loot_items (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  item_type  text NOT NULL CHECK (item_type IN ('card', 'dice')),
+  design_key text NOT NULL,
+  name       text NOT NULL,
+  rarity     text NOT NULL CHECK (rarity IN ('bronze', 'silver', 'gold')),
+  sort_order int  NOT NULL DEFAULT 0,
+  UNIQUE(item_type, design_key)
+);
+
+-- Inventar: welche Items ein User besitzt
+CREATE TABLE public.user_inventory (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  item_id     uuid NOT NULL REFERENCES public.loot_items(id) ON DELETE CASCADE,
+  unlocked_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(user_id, item_id)
+);
+
+-- Credits: Bronze / Silber / Gold pro User
+CREATE TABLE public.user_credits (
+  user_id        uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  bronze_credits int NOT NULL DEFAULT 0 CHECK (bronze_credits >= 0),
+  silver_credits int NOT NULL DEFAULT 0 CHECK (silver_credits >= 0),
+  gold_credits   int NOT NULL DEFAULT 0 CHECK (gold_credits >= 0)
+);
+
+-- Ausstehende Lootboxen
+-- source: 'kniffel' (available_at = nächster UTC-Mitternacht) | 'morder' (sofort)
+-- status: 'pending' | 'ready' | 'opened'
+CREATE TABLE public.user_lootboxes (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  source       text NOT NULL CHECK (source IN ('kniffel', 'morder')),
+  status       text NOT NULL DEFAULT 'ready' CHECK (status IN ('pending', 'ready', 'opened')),
+  available_at timestamptz NOT NULL DEFAULT now(),
+  opened_at    timestamptz,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- Aktives Card- und Dice-Design pro User (NULL = Standard)
+CREATE TABLE public.user_active_designs (
+  user_id        uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  active_card_id uuid REFERENCES public.loot_items(id) ON DELETE SET NULL,
+  active_dice_id uuid REFERENCES public.loot_items(id) ON DELETE SET NULL
+);
+
+-- Tracking: verhindert Doppelvergabe von Kniffel-Lootboxen
+CREATE TABLE public.kniffel_lootbox_awards (
+  game_date  date PRIMARY KEY,
+  winner_id  uuid REFERENCES auth.users(id),
+  awarded_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.kniffel_lootbox_awards ENABLE ROW LEVEL SECURITY;
+-- Kein direkter Client-Zugriff; Schreiben nur über SECURITY DEFINER-Funktionen.
+
+-- Vollständige Funktionen und Seed-Daten: siehe Migration 012_lootbox_system.sql
