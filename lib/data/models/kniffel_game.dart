@@ -193,6 +193,7 @@ class KniffelAlltimeEntry {
   final int daysPlayed;
   final int bestScore;
   final int dailyWins;
+  final int dailyLosses;
 
   const KniffelAlltimeEntry({
     required this.userId,
@@ -203,6 +204,7 @@ class KniffelAlltimeEntry {
     required this.daysPlayed,
     required this.bestScore,
     required this.dailyWins,
+    required this.dailyLosses,
   });
 
   factory KniffelAlltimeEntry.fromJson(Map<String, dynamic> json) =>
@@ -215,5 +217,6 @@ class KniffelAlltimeEntry {
         daysPlayed: (json['days_played'] as num).toInt(),
         bestScore: (json['best_score'] as num).toInt(),
         dailyWins: (json['daily_wins'] as num).toInt(),
+        dailyLosses: (json['daily_losses'] as num).toInt(),
       );
 }

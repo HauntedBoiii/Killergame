@@ -70,7 +70,7 @@ class _KniffelLeaderboardScreenState
           controller: _tabController,
           tabs: const [
             Tab(text: 'HEUTE'),
-            Tab(text: 'ALLZEIT'),
+            Tab(text: 'ALLTIME'),
           ],
           labelStyle: GoogleFonts.rajdhani(
               fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2),
@@ -542,8 +542,12 @@ class _AlltimeRow extends StatelessWidget {
                   value: '${entry.bestScore}',
                   isDark: isDark),
               _MiniStat(
-                  label: '🏆 Siege',
+                  label: '👑 Kronen',
                   value: '${entry.dailyWins}',
+                  isDark: isDark),
+              _MiniStat(
+                  label: '🤡 Loses',
+                  value: '${entry.dailyLosses}',
                   isDark: isDark),
             ],
           ),
