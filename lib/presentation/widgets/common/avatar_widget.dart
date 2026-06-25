@@ -149,7 +149,7 @@ class KniffelAwareAvatarWidget extends ConsumerWidget {
     final showClown = userId != null && (badges?.lastPlace.contains(userId) ?? false);
     final showGoldenGlow = userId != null && userId == alltimeLeaderId;
 
-    return AvatarWidget(
+    final avatar = AvatarWidget(
       imageUrl: imageUrl,
       name: name,
       radius: radius,
@@ -157,6 +157,53 @@ class KniffelAwareAvatarWidget extends ConsumerWidget {
       showCrown: showCrown,
       showClown: showClown,
       showGoldenGlow: showGoldenGlow,
+    );
+
+    return GestureDetector(
+      onLongPress: () => _showFullscreen(
+        context,
+        showCrown: showCrown,
+        showClown: showClown,
+        showGoldenGlow: showGoldenGlow,
+      ),
+      child: avatar,
+    );
+  }
+
+  void _showFullscreen(
+    BuildContext context, {
+    required bool showCrown,
+    required bool showClown,
+    required bool showGoldenGlow,
+  }) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'close',
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      transitionDuration: const Duration(milliseconds: 200),
+      transitionBuilder: (_, anim, __, child) => ScaleTransition(
+        scale: CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+        child: FadeTransition(opacity: anim, child: child),
+      ),
+      pageBuilder: (ctx, _, __) => GestureDetector(
+        onTap: () => Navigator.of(ctx).pop(),
+        behavior: HitTestBehavior.opaque,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: AvatarWidget(
+              imageUrl: imageUrl,
+              name: name,
+              radius: 110,
+              isAlive: isAlive,
+              showCrown: showCrown,
+              showClown: showClown,
+              showGoldenGlow: showGoldenGlow,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
