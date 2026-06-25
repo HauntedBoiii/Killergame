@@ -220,30 +220,37 @@ class _SlotMachine extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withOpacity(.08)),
         ),
-        child: Stack(alignment: Alignment.center, children: [
-          OverflowBox(
-            alignment: Alignment.centerLeft,
-            maxWidth: double.infinity,
-            child: AnimatedBuilder(
-              animation: ctrl,
-              builder: (_, __) {
-                final offset = Offset(-ctrl.value * targetX, 0);
-                return Transform.translate(
-                  offset: offset,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: reel.map((r) => _ReelTile(rarity: r, width: tileW)).toList(),
-                  ),
-                );
-              },
+        child: Stack(children: [
+          // Reel: Positioned bei left=0 → exakte Pixelposition, kein Layout-Ambiguität
+          AnimatedBuilder(
+            animation: ctrl,
+            builder: (_, __) => Positioned(
+              left: -ctrl.value * targetX,
+              top: 0,
+              bottom: 0,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: reel.map((r) => _ReelTile(rarity: r, width: tileW)).toList(),
+              ),
             ),
           ),
           // Zentrum-Markierung
-          IgnorePointer(child: Column(children: [
-            Container(height: 3, width: tileW - 8, decoration: BoxDecoration(color: const Color(0xFFEF5350), borderRadius: BorderRadius.circular(2), boxShadow: [BoxShadow(color: const Color(0xFFEF5350).withOpacity(.6), blurRadius: 8)])),
-            const Spacer(),
-            Container(height: 3, width: tileW - 8, decoration: BoxDecoration(color: const Color(0xFFEF5350), borderRadius: BorderRadius.circular(2), boxShadow: [BoxShadow(color: const Color(0xFFEF5350).withOpacity(.6), blurRadius: 8)])),
-          ])),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Align(
+                alignment: Alignment.center,
+                child: SizedBox(
+                  width: tileW - 8,
+                  height: double.infinity,
+                  child: Column(children: [
+                    Container(height: 3, decoration: BoxDecoration(color: const Color(0xFFEF5350), borderRadius: BorderRadius.circular(2), boxShadow: [BoxShadow(color: const Color(0xFFEF5350).withValues(alpha: .6), blurRadius: 8)])),
+                    const Spacer(),
+                    Container(height: 3, decoration: BoxDecoration(color: const Color(0xFFEF5350), borderRadius: BorderRadius.circular(2), boxShadow: [BoxShadow(color: const Color(0xFFEF5350).withValues(alpha: .6), blurRadius: 8)])),
+                  ]),
+                ),
+              ),
+            ),
+          ),
         ]),
       ),
     ]);
@@ -480,18 +487,21 @@ class _CardDesignRow extends StatelessWidget {
   final _DesignEntry entry; final bool isActive; final ProfileCardData data; final VoidCallback onSelect;
 
   @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          _RarityBadge(entry.rarity),
-          const SizedBox(width: 8),
-          Text(entry.name, style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
-          const Spacer(),
-          _SelectButton(isActive: isActive, onTap: onSelect),
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onSelect,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            _RarityBadge(entry.rarity),
+            const SizedBox(width: 8),
+            Text(entry.name, style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+            const Spacer(),
+            _SelectButton(isActive: isActive, onTap: onSelect),
+          ]),
+          const SizedBox(height: 8),
+          IgnorePointer(child: ProfileCardWidget(design: entry.design, data: data)),
+          const SizedBox(height: 16),
         ]),
-        const SizedBox(height: 8),
-        ProfileCardWidget(design: entry.design, data: data),
-        const SizedBox(height: 16),
-      ]);
+      );
 }
 
 class _DiceSection extends ConsumerWidget {
@@ -511,18 +521,21 @@ class _DiceSection extends ConsumerWidget {
       children: allDesigns.map((entry) {
         final design   = entry.design as DiceDesign;
         final isActive = state.activeDiceDesign == design;
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            _RarityBadge(entry.rarity),
-            const SizedBox(width: 8),
-            Text(entry.name, style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
-            const Spacer(),
-            _SelectButton(isActive: isActive, onTap: () => setActiveDesign(isActive ? null : entry.itemId, 'dice', ref)),
+        return GestureDetector(
+          onTap: () => setActiveDesign(isActive ? null : entry.itemId, 'dice', ref),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              _RarityBadge(entry.rarity),
+              const SizedBox(width: 8),
+              Text(entry.name, style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+              const Spacer(),
+              _SelectButton(isActive: isActive, onTap: () => setActiveDesign(isActive ? null : entry.itemId, 'dice', ref)),
+            ]),
+            const SizedBox(height: 8),
+            IgnorePointer(child: Row(children: vals.map((v) => Padding(padding: const EdgeInsets.only(right: 8), child: DiceWidget(value: v, design: design, size: 50))).toList())),
+            const SizedBox(height: 16),
           ]),
-          const SizedBox(height: 8),
-          Row(children: vals.map((v) => Padding(padding: const EdgeInsets.only(right: 8), child: DiceWidget(value: v, design: design, size: 50))).toList()),
-          const SizedBox(height: 16),
-        ]);
+        );
       }).toList(),
     );
   }
