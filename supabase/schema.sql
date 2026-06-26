@@ -963,13 +963,26 @@ END;
 $$;
 
 -- ── Start or resume today's game (idempotent) ──────────────────
+-- Tester (UUID 461045f1-...) kann täglich neu starten.
 
 CREATE OR REPLACE FUNCTION public.kniffel_start_or_resume()
 RETURNS public.kniffel_games LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
-  v_today date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
-  v_game  public.kniffel_games;
+  v_today     date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
+  v_game      public.kniffel_games;
+  v_is_tester boolean;
 BEGIN
+  PERFORM public._process_kniffel_lootboxes();
+
+  v_is_tester := auth.uid() = '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid;
+
+  IF v_is_tester THEN
+    DELETE FROM public.kniffel_games
+    WHERE user_id  = auth.uid()
+      AND game_date = v_today
+      AND status   = 'completed';
+  END IF;
+
   SELECT * INTO v_game
   FROM public.kniffel_games
   WHERE user_id = auth.uid() AND game_date = v_today;
@@ -986,24 +999,36 @@ $$;
 GRANT EXECUTE ON FUNCTION public.kniffel_start_or_resume TO authenticated;
 
 -- ── Roll dice (server-side randomness = tamper-proof) ──────────
+-- Supports crown bonus 4th roll (Migration 015).
 
 CREATE OR REPLACE FUNCTION public.kniffel_roll(
   p_game_id uuid,
   p_held    boolean[] DEFAULT '{false,false,false,false,false}'
 ) RETURNS public.kniffel_games LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
-  v_game     public.kniffel_games;
-  v_new_dice integer[];
-  v_i        integer;
+  v_game           public.kniffel_games;
+  v_new_dice       integer[];
+  v_i              integer;
+  v_held_count     integer;
+  v_held_value     integer;
+  v_held_all_same  boolean;
+  v_nonheld_value  integer;
+  v_has_crown      boolean;
 BEGIN
   SELECT * INTO v_game
   FROM public.kniffel_games
   WHERE id = p_game_id AND user_id = auth.uid()
   FOR UPDATE;
 
-  IF NOT FOUND THEN RAISE EXCEPTION 'Game not found'; END IF;
-  IF v_game.status = 'completed'   THEN RAISE EXCEPTION 'Game already completed'; END IF;
-  IF v_game.roll_count >= 3        THEN RAISE EXCEPTION 'No rolls remaining this turn'; END IF;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Game not found';
+  END IF;
+  IF v_game.status = 'completed' THEN
+    RAISE EXCEPTION 'Game already completed';
+  END IF;
+  IF v_game.roll_count >= 3 AND NOT v_game.crown_bonus_available THEN
+    RAISE EXCEPTION 'No rolls remaining this turn';
+  END IF;
   IF v_game.game_date != (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date THEN
     RAISE EXCEPTION 'Not todays game';
   END IF;
@@ -1022,6 +1047,71 @@ BEGIN
       updated_at   = now()
   WHERE id = p_game_id
   RETURNING * INTO v_game;
+
+  -- Grant crown bonus after roll 3: exactly 4 held identical dice,
+  -- 5th die differs, user has crown design active, bonus not yet used.
+  IF v_game.roll_count = 3
+     AND NOT v_game.crown_bonus_used
+     AND NOT v_game.crown_bonus_available
+  THEN
+    v_held_count := 0;
+    FOR v_i IN 1..5 LOOP
+      IF p_held[v_i] THEN v_held_count := v_held_count + 1; END IF;
+    END LOOP;
+
+    IF v_held_count = 4 THEN
+      SELECT EXISTS (
+        SELECT 1 FROM public.user_active_designs uad
+        JOIN public.loot_items li ON li.id = uad.active_dice_id
+        WHERE uad.user_id = auth.uid()
+          AND li.design_key = 'crown'
+      ) INTO v_has_crown;
+
+      IF v_has_crown THEN
+        v_held_value := NULL;
+        FOR v_i IN 1..5 LOOP
+          IF p_held[v_i] THEN
+            v_held_value := v_new_dice[v_i];
+            EXIT;
+          END IF;
+        END LOOP;
+
+        v_held_all_same := true;
+        FOR v_i IN 1..5 LOOP
+          IF p_held[v_i] AND v_new_dice[v_i] != v_held_value THEN
+            v_held_all_same := false;
+          END IF;
+        END LOOP;
+
+        v_nonheld_value := NULL;
+        FOR v_i IN 1..5 LOOP
+          IF NOT p_held[v_i] THEN
+            v_nonheld_value := v_new_dice[v_i];
+            EXIT;
+          END IF;
+        END LOOP;
+
+        IF v_held_all_same
+           AND v_nonheld_value IS NOT NULL
+           AND v_nonheld_value != v_held_value
+        THEN
+          UPDATE public.kniffel_games
+          SET crown_bonus_available = true
+          WHERE id = p_game_id
+          RETURNING * INTO v_game;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+
+  -- Consume crown bonus on roll 4
+  IF v_game.roll_count = 4 THEN
+    UPDATE public.kniffel_games
+    SET crown_bonus_available = false,
+        crown_bonus_used      = true
+    WHERE id = p_game_id
+    RETURNING * INTO v_game;
+  END IF;
 
   RETURN v_game;
 END;
@@ -1095,25 +1185,27 @@ BEGIN
     ) + CASE WHEN v_upper_sum >= 63 THEN 35 ELSE 0 END;
 
     UPDATE public.kniffel_games
-    SET scorecard     = v_new_scorecard,
-        status        = 'completed',
-        final_score   = v_final_score,
-        current_dice  = NULL,
-        held_dice     = NULL,
-        roll_count    = 0,
-        current_turn  = current_turn + 1,
-        submitted_at  = now(),
-        updated_at    = now()
+    SET scorecard             = v_new_scorecard,
+        status                = 'completed',
+        final_score           = v_final_score,
+        current_dice          = NULL,
+        held_dice             = NULL,
+        roll_count            = 0,
+        current_turn          = current_turn + 1,
+        crown_bonus_available = false,
+        submitted_at          = now(),
+        updated_at            = now()
     WHERE id = p_game_id
     RETURNING * INTO v_game;
   ELSE
     UPDATE public.kniffel_games
-    SET scorecard    = v_new_scorecard,
-        current_dice = NULL,
-        held_dice    = NULL,
-        roll_count   = 0,
-        current_turn = current_turn + 1,
-        updated_at   = now()
+    SET scorecard             = v_new_scorecard,
+        current_dice          = NULL,
+        held_dice             = NULL,
+        roll_count            = 0,
+        current_turn          = current_turn + 1,
+        crown_bonus_available = false,
+        updated_at            = now()
     WHERE id = p_game_id
     RETURNING * INTO v_game;
   END IF;
@@ -1124,10 +1216,14 @@ $$;
 GRANT EXECUTE ON FUNCTION public.kniffel_select_category TO authenticated;
 
 -- ── Daily leaderboard (global or filtered to one game group) ───
+-- game_id added (014). Tester excluded (016).
+
+DROP FUNCTION IF EXISTS public.kniffel_daily_leaderboard(uuid);
 
 CREATE OR REPLACE FUNCTION public.kniffel_daily_leaderboard(
   p_game_id uuid DEFAULT NULL
 ) RETURNS TABLE(
+  game_id      uuid,
   user_id      uuid,
   username     text,
   avatar_url   text,
@@ -1140,6 +1236,7 @@ DECLARE
 BEGIN
   RETURN QUERY
   SELECT
+    kg.id           AS game_id,
     kg.user_id,
     p.username::text,
     p.avatar_url::text,
@@ -1149,7 +1246,8 @@ BEGIN
   FROM public.kniffel_games kg
   JOIN public.profiles p ON p.id = kg.user_id
   WHERE kg.game_date = v_today
-    AND kg.status = 'completed'
+    AND kg.status    = 'completed'
+    AND kg.user_id  != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
     AND (
       p_game_id IS NULL
       OR EXISTS (
@@ -1163,25 +1261,28 @@ $$;
 GRANT EXECUTE ON FUNCTION public.kniffel_daily_leaderboard TO authenticated;
 
 -- ── All-time leaderboard ───────────────────────────────────────
+-- daily_losses added (009). Tester excluded in all CTEs (016).
 
 CREATE OR REPLACE FUNCTION public.kniffel_alltime_leaderboard(
   p_game_id uuid DEFAULT NULL
 ) RETURNS TABLE(
-  user_id     uuid,
-  username    text,
-  avatar_url  text,
-  total_score bigint,
-  avg_score   numeric,
-  days_played bigint,
-  best_score  integer,
-  daily_wins  bigint
+  user_id      uuid,
+  username     text,
+  avatar_url   text,
+  total_score  bigint,
+  avg_score    numeric,
+  days_played  bigint,
+  best_score   integer,
+  daily_wins   bigint,
+  daily_losses bigint
 ) LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
   RETURN QUERY
   WITH daily_winners AS (
     SELECT DISTINCT ON (kg.game_date) kg.user_id, kg.game_date
     FROM public.kniffel_games kg
-    WHERE kg.status = 'completed'
+    WHERE kg.status  = 'completed'
+      AND kg.user_id != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
       AND (
         p_game_id IS NULL
         OR EXISTS (
@@ -1190,16 +1291,45 @@ BEGIN
         )
       )
     ORDER BY kg.game_date, kg.final_score DESC
+  ),
+  daily_losers AS (
+    SELECT DISTINCT ON (kg.game_date) kg.user_id, kg.game_date
+    FROM public.kniffel_games kg
+    WHERE kg.status  = 'completed'
+      AND kg.user_id != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
+      AND (
+        p_game_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.game_players gp
+          WHERE gp.game_id = p_game_id AND gp.player_id = kg.user_id
+        )
+      )
+      AND (
+        SELECT COUNT(*) FROM public.kniffel_games kg2
+        WHERE kg2.status   = 'completed'
+          AND kg2.game_date = kg.game_date
+          AND kg2.user_id  != kg.user_id
+          AND kg2.user_id  != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
+          AND (
+            p_game_id IS NULL
+            OR EXISTS (
+              SELECT 1 FROM public.game_players gp2
+              WHERE gp2.game_id = p_game_id AND gp2.player_id = kg2.user_id
+            )
+          )
+      ) > 0
+    ORDER BY kg.game_date, kg.final_score ASC
   )
   SELECT
-    p.id                                                   AS user_id,
+    p.id                                                    AS user_id,
     p.username::text,
     p.avatar_url::text,
-    COALESCE(SUM(kg.final_score)::bigint, 0)               AS total_score,
-    COALESCE(AVG(kg.final_score::numeric), 0)              AS avg_score,
-    COUNT(DISTINCT kg.game_date)                           AS days_played,
-    COALESCE(MAX(kg.final_score), 0)                       AS best_score,
-    COUNT(DISTINCT dw.game_date)                           AS daily_wins
+    COALESCE(SUM(kg.final_score)::bigint, 0)                AS total_score,
+    COALESCE(AVG(kg.final_score::numeric), 0)               AS avg_score,
+    COUNT(DISTINCT kg.game_date)                            AS days_played,
+    COALESCE(MAX(kg.final_score), 0)                        AS best_score,
+    COUNT(DISTINCT dw.game_date)                            AS daily_wins,
+    COUNT(DISTINCT dl.game_date)                            AS daily_losses
   FROM public.profiles p
   JOIN public.kniffel_games kg
     ON kg.user_id = p.id AND kg.status = 'completed'
@@ -1211,6 +1341,8 @@ BEGIN
       )
     )
   LEFT JOIN daily_winners dw ON dw.user_id = p.id
+  LEFT JOIN daily_losers  dl ON dl.user_id = p.id
+  WHERE p.id != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
   GROUP BY p.id, p.username, p.avatar_url
   ORDER BY total_score DESC;
 END;
