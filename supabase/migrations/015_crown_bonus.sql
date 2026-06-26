@@ -77,10 +77,9 @@ BEGIN
     IF v_held_count = 4 THEN
       SELECT EXISTS (
         SELECT 1 FROM public.user_active_designs uad
-        JOIN public.loot_items li ON li.id = uad.item_id
+        JOIN public.loot_items li ON li.id = uad.active_dice_id
         WHERE uad.user_id = auth.uid()
           AND li.design_key = 'crown'
-          AND li.item_type = 'dice'
       ) INTO v_has_crown;
 
       IF v_has_crown THEN

@@ -66,6 +66,10 @@ Deno.serve(async (req) => {
     url = `/game/${record.id}/over`;
 
   } else if (table === "kniffel_games" && type === "UPDATE" && record.status === "completed" && old_record?.status === "in_progress") {
+    if (record.user_id === "461045f1-83b6-44a1-bd5e-1d3214533d8d") {
+      console.log('[send-push] tester completion, skipping notification');
+      return new Response("no-op (tester)", { status: 200 });
+    }
     // Leaderboard RPC is SECURITY DEFINER — returns username + rank in one call
     const { data: leaderboard } = await supabase.rpc("kniffel_daily_leaderboard");
     const myEntry = (leaderboard ?? []).find((e: any) => e.user_id === record.user_id);
