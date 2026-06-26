@@ -29,7 +29,8 @@ enum DiceDesign {
   blood('blood'),
   appRed('app_red'),
   digital('digital'),
-  crystal('crystal');
+  crystal('crystal'),
+  crown('crown');
 
   const DiceDesign(this.key);
   final String key;
@@ -41,18 +42,20 @@ enum DiceDesign {
 }
 
 enum Rarity {
-  bronze('bronze', Color(0xFFCD7F32)),
-  silver('silver', Color(0xFFC0C0C0)),
-  gold('gold',   Color(0xFFFFD700));
+  bronze('bronze',  Color(0xFFCD7F32)),
+  silver('silver',  Color(0xFFC0C0C0)),
+  gold('gold',      Color(0xFFFFD700)),
+  diamond('diamond', Color(0xFF9BE4FF));
 
   const Rarity(this.key, this.color);
   final String key;
   final Color color;
 
   String get label => switch (this) {
-    Rarity.bronze => 'Bronze',
-    Rarity.silver => 'Silber',
-    Rarity.gold   => 'Gold',
+    Rarity.bronze  => 'Bronze',
+    Rarity.silver  => 'Silber',
+    Rarity.gold    => 'Gold',
+    Rarity.diamond => 'Diamant',
   };
 
   static Rarity fromKey(String key) =>
@@ -132,9 +135,10 @@ class UserCredits {
       );
 
   int operator [](Rarity r) => switch (r) {
-    Rarity.bronze => bronze,
-    Rarity.silver => silver,
-    Rarity.gold   => gold,
+    Rarity.bronze  => bronze,
+    Rarity.silver  => silver,
+    Rarity.gold    => gold,
+    Rarity.diamond => 0,
   };
 }
 

@@ -133,6 +133,7 @@ class _LootboxTabState extends ConsumerState<_LootboxTab> with SingleTickerProvi
       ...List.filled(49, Rarity.bronze),
       ...List.filled(14, Rarity.silver),
       ...List.filled(7,  Rarity.gold),
+      ...List.filled(1,  Rarity.diamond),
     ]..shuffle(rng);
 
     _reel = List<Rarity>.from(pool.take(_tileCount));
@@ -264,9 +265,10 @@ class _ReelTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color bg = switch (rarity) {
-      Rarity.bronze => const Color(0xFF2A1A00),
-      Rarity.silver => const Color(0xFF1A1A2A),
-      Rarity.gold   => const Color(0xFF2A2000),
+      Rarity.bronze  => const Color(0xFF2A1A00),
+      Rarity.silver  => const Color(0xFF1A1A2A),
+      Rarity.gold    => const Color(0xFF2A2000),
+      Rarity.diamond => const Color(0xFF040C1E),
     };
     return Container(
       width: width,
@@ -287,9 +289,10 @@ class _ReelTile extends StatelessWidget {
   }
 
   String _rarityIcon(Rarity r) => switch (r) {
-    Rarity.bronze => '🥉',
-    Rarity.silver => '🥈',
-    Rarity.gold   => '🥇',
+    Rarity.bronze  => '🥉',
+    Rarity.silver  => '🥈',
+    Rarity.gold    => '🥇',
+    Rarity.diamond => '💎',
   };
 }
 
@@ -329,9 +332,10 @@ class _ResultCard extends StatelessWidget {
   }
 
   String _rarityIcon(Rarity r) => switch (r) {
-    Rarity.bronze => '🥉',
-    Rarity.silver => '🥈',
-    Rarity.gold   => '🥇',
+    Rarity.bronze  => '🥉',
+    Rarity.silver  => '🥈',
+    Rarity.gold    => '🥇',
+    Rarity.diamond => '💎',
   };
 }
 
@@ -639,7 +643,7 @@ class _CreditsTab extends ConsumerWidget {
         const Text('Schalte ein zufälliges Item der gewählten Seltenheit frei.', style: TextStyle(color: Colors.white38, fontSize: 12)),
         const SizedBox(height: 12),
 
-        for (final r in Rarity.values)
+        for (final r in Rarity.values.where((r) => r != Rarity.diamond))
           _SpendRow(
             rarity: r,
             count: credits[r],
@@ -705,9 +709,10 @@ class _CreditCard extends StatelessWidget {
       );
 
   String _rarityIcon(Rarity r) => switch (r) {
-    Rarity.bronze => '🥉',
-    Rarity.silver => '🥈',
-    Rarity.gold   => '🥇',
+    Rarity.bronze  => '🥉',
+    Rarity.silver  => '🥈',
+    Rarity.gold    => '🥇',
+    Rarity.diamond => '💎',
   };
 }
 
@@ -744,9 +749,10 @@ class _TradeRow extends StatelessWidget {
       );
 
   String _rarityIcon(Rarity r) => switch (r) {
-    Rarity.bronze => '🥉',
-    Rarity.silver => '🥈',
-    Rarity.gold   => '🥇',
+    Rarity.bronze  => '🥉',
+    Rarity.silver  => '🥈',
+    Rarity.gold    => '🥇',
+    Rarity.diamond => '💎',
   };
 }
 
@@ -790,8 +796,9 @@ class _SpendRow extends StatelessWidget {
   }
 
   String get _icon => switch (rarity) {
-    Rarity.bronze => '🥉',
-    Rarity.silver => '🥈',
-    Rarity.gold   => '🥇',
+    Rarity.bronze  => '🥉',
+    Rarity.silver  => '🥈',
+    Rarity.gold    => '🥇',
+    Rarity.diamond => '💎',
   };
 }
