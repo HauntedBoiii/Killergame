@@ -702,6 +702,34 @@ class _CompletedView extends ConsumerWidget {
             ),
           ).animate().fadeIn(delay: 200.ms),
 
+          if (game.userId == '461045f1-83b6-44a1-bd5e-1d3214533d8d') ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    ref.read(kniffelGameProvider.notifier).startOrResume(),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(
+                  'NEUE RUNDE (TESTER)',
+                  style: GoogleFonts.rajdhani(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey,
+                  side: const BorderSide(color: Colors.grey),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ).animate().fadeIn(delay: 300.ms),
+          ],
+
           const SizedBox(height: 24),
           Text(
             'Deine heutige Scorecard',
