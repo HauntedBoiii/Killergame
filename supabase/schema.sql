@@ -909,6 +909,18 @@ CREATE POLICY "kniffel_update" ON public.kniffel_games
 GRANT ALL ON public.kniffel_games TO authenticated;
 GRANT ALL ON public.kniffel_games TO service_role;
 
+CREATE INDEX IF NOT EXISTS idx_kniffel_completed_date_user
+  ON public.kniffel_games (game_date, user_id, final_score DESC)
+  WHERE status = 'completed';
+
+-- ── Tester-UUID: zentrale Helper-Funktion (017) ───────────────
+
+CREATE OR REPLACE FUNCTION public._tester_uuid()
+RETURNS uuid LANGUAGE sql IMMUTABLE SECURITY DEFINER
+SET search_path = public AS $$
+  SELECT '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
+$$;
+
 -- ── Helper: score a category given the dice ────────────────────
 
 CREATE OR REPLACE FUNCTION public.compute_kniffel_category_score(
@@ -963,19 +975,25 @@ END;
 $$;
 
 -- ── Start or resume today's game (idempotent) ──────────────────
--- Tester (UUID 461045f1-...) kann täglich neu starten.
+-- Tester kann täglich neu starten (017: auth-Guard + ON CONFLICT race-fix).
 
 CREATE OR REPLACE FUNCTION public.kniffel_start_or_resume()
-RETURNS public.kniffel_games LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS public.kniffel_games LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   v_today     date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
   v_game      public.kniffel_games;
   v_is_tester boolean;
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
   PERFORM public._process_kniffel_lootboxes();
 
-  v_is_tester := auth.uid() = '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid;
+  v_is_tester := auth.uid() = public._tester_uuid();
 
+  -- Tester darf täglich neu starten: abgeschlossenes Spiel löschen
   IF v_is_tester THEN
     DELETE FROM public.kniffel_games
     WHERE user_id  = auth.uid()
@@ -988,9 +1006,18 @@ BEGIN
   WHERE user_id = auth.uid() AND game_date = v_today;
 
   IF NOT FOUND THEN
+    -- ON CONFLICT DO NOTHING fängt parallele Requests desselben Users ab
     INSERT INTO public.kniffel_games (user_id, game_date)
     VALUES (auth.uid(), v_today)
+    ON CONFLICT (user_id, game_date) DO NOTHING
     RETURNING * INTO v_game;
+
+    -- Falls INSERT keinen Row zurückgegeben hat (Concurrent-Session gewann)
+    IF NOT FOUND THEN
+      SELECT * INTO v_game
+      FROM public.kniffel_games
+      WHERE user_id = auth.uid() AND game_date = v_today;
+    END IF;
   END IF;
 
   RETURN v_game;
@@ -1216,7 +1243,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.kniffel_select_category TO authenticated;
 
 -- ── Daily leaderboard (global or filtered to one game group) ───
--- game_id added (014). Tester excluded (016).
+-- game_id added (014). Tester excluded (016). DENSE_RANK + search_path (017).
 
 DROP FUNCTION IF EXISTS public.kniffel_daily_leaderboard(uuid);
 
@@ -1230,7 +1257,8 @@ CREATE OR REPLACE FUNCTION public.kniffel_daily_leaderboard(
   final_score  integer,
   submitted_at timestamp with time zone,
   rank         bigint
-) LANGUAGE plpgsql SECURITY DEFINER AS $$
+) LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   v_today date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
 BEGIN
@@ -1242,12 +1270,14 @@ BEGIN
     p.avatar_url::text,
     kg.final_score,
     kg.submitted_at,
-    RANK() OVER (ORDER BY kg.final_score DESC)::bigint
+    -- DENSE_RANK: kein Rang-Lücke bei Gleichstand (1,2,2,3 statt 1,2,2,4)
+    -- Berechnet nach Tester-Filter → Tester beeinflusst keine Platzierung
+    DENSE_RANK() OVER (ORDER BY kg.final_score DESC)::bigint
   FROM public.kniffel_games kg
   JOIN public.profiles p ON p.id = kg.user_id
   WHERE kg.game_date = v_today
     AND kg.status    = 'completed'
-    AND kg.user_id  != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
+    AND kg.user_id  != public._tester_uuid()
     AND (
       p_game_id IS NULL
       OR EXISTS (
@@ -1261,7 +1291,8 @@ $$;
 GRANT EXECUTE ON FUNCTION public.kniffel_daily_leaderboard TO authenticated;
 
 -- ── All-time leaderboard ───────────────────────────────────────
--- daily_losses added (009). Tester excluded in all CTEs (016).
+-- daily_losses added (009). Tester excluded (016).
+-- 017: filtered_games CTE eliminiert O(n²)-Subquery + 4× Duplikat-Filter.
 
 CREATE OR REPLACE FUNCTION public.kniffel_alltime_leaderboard(
   p_game_id uuid DEFAULT NULL
@@ -1275,14 +1306,18 @@ CREATE OR REPLACE FUNCTION public.kniffel_alltime_leaderboard(
   best_score   integer,
   daily_wins   bigint,
   daily_losses bigint
-) LANGUAGE plpgsql SECURITY DEFINER AS $$
+) LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 BEGIN
   RETURN QUERY
-  WITH daily_winners AS (
-    SELECT DISTINCT ON (kg.game_date) kg.user_id, kg.game_date
+  WITH
+  -- Alle relevanten Spiele: abgeschlossen, kein Tester, optional nach game_id gefiltert.
+  -- Einziger Ort der game_players-Membership-Prüfung – kein Copy-Paste mehr.
+  filtered_games AS (
+    SELECT kg.user_id, kg.game_date, kg.final_score
     FROM public.kniffel_games kg
     WHERE kg.status  = 'completed'
-      AND kg.user_id != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
+      AND kg.user_id != public._tester_uuid()
       AND (
         p_game_id IS NULL
         OR EXISTS (
@@ -1290,59 +1325,42 @@ BEGIN
           WHERE gp.game_id = p_game_id AND gp.player_id = kg.user_id
         )
       )
-    ORDER BY kg.game_date, kg.final_score DESC
   ),
+  -- Tage mit > 1 Teilnehmer: Voraussetzung für einen eindeutigen Tagesverlierer
+  multi_player_days AS (
+    SELECT game_date
+    FROM filtered_games
+    GROUP BY game_date
+    HAVING COUNT(*) > 1
+  ),
+  -- Tagessieger: höchster Score pro Tag
+  daily_winners AS (
+    SELECT DISTINCT ON (game_date) user_id, game_date
+    FROM filtered_games
+    ORDER BY game_date, final_score DESC
+  ),
+  -- Tagesverlierer: niedrigster Score, nur an Mehrspielertagen
   daily_losers AS (
-    SELECT DISTINCT ON (kg.game_date) kg.user_id, kg.game_date
-    FROM public.kniffel_games kg
-    WHERE kg.status  = 'completed'
-      AND kg.user_id != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
-      AND (
-        p_game_id IS NULL
-        OR EXISTS (
-          SELECT 1 FROM public.game_players gp
-          WHERE gp.game_id = p_game_id AND gp.player_id = kg.user_id
-        )
-      )
-      AND (
-        SELECT COUNT(*) FROM public.kniffel_games kg2
-        WHERE kg2.status   = 'completed'
-          AND kg2.game_date = kg.game_date
-          AND kg2.user_id  != kg.user_id
-          AND kg2.user_id  != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
-          AND (
-            p_game_id IS NULL
-            OR EXISTS (
-              SELECT 1 FROM public.game_players gp2
-              WHERE gp2.game_id = p_game_id AND gp2.player_id = kg2.user_id
-            )
-          )
-      ) > 0
-    ORDER BY kg.game_date, kg.final_score ASC
+    SELECT DISTINCT ON (fg.game_date) fg.user_id, fg.game_date
+    FROM filtered_games fg
+    JOIN multi_player_days mpd ON mpd.game_date = fg.game_date
+    ORDER BY fg.game_date, fg.final_score ASC
   )
   SELECT
-    p.id                                                    AS user_id,
+    p.id                                      AS user_id,
     p.username::text,
     p.avatar_url::text,
-    COALESCE(SUM(kg.final_score)::bigint, 0)                AS total_score,
-    COALESCE(AVG(kg.final_score::numeric), 0)               AS avg_score,
-    COUNT(DISTINCT kg.game_date)                            AS days_played,
-    COALESCE(MAX(kg.final_score), 0)                        AS best_score,
-    COUNT(DISTINCT dw.game_date)                            AS daily_wins,
-    COUNT(DISTINCT dl.game_date)                            AS daily_losses
+    COALESCE(SUM(fg.final_score)::bigint, 0)  AS total_score,
+    COALESCE(AVG(fg.final_score::numeric), 0) AS avg_score,
+    COUNT(DISTINCT fg.game_date)              AS days_played,
+    COALESCE(MAX(fg.final_score), 0)          AS best_score,
+    COUNT(DISTINCT dw.game_date)              AS daily_wins,
+    COUNT(DISTINCT dl.game_date)              AS daily_losses
   FROM public.profiles p
-  JOIN public.kniffel_games kg
-    ON kg.user_id = p.id AND kg.status = 'completed'
-    AND (
-      p_game_id IS NULL
-      OR EXISTS (
-        SELECT 1 FROM public.game_players gp
-        WHERE gp.game_id = p_game_id AND gp.player_id = p.id
-      )
-    )
+  JOIN filtered_games fg ON fg.user_id = p.id
   LEFT JOIN daily_winners dw ON dw.user_id = p.id
   LEFT JOIN daily_losers  dl ON dl.user_id = p.id
-  WHERE p.id != '461045f1-83b6-44a1-bd5e-1d3214533d8d'::uuid
+  WHERE p.id != public._tester_uuid()
   GROUP BY p.id, p.username, p.avatar_url
   ORDER BY total_score DESC;
 END;
