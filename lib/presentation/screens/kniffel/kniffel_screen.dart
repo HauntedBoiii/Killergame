@@ -118,7 +118,7 @@ class _KniffelScreenState extends ConsumerState<KniffelScreen> {
 
   void _toggleHold(int index) {
     final game = ref.read(kniffelGameProvider).value;
-    if (game == null || game.rollCount == 0 || _isRolling) return;
+    if (game == null || game.rollCount == 0 || _isRolling || game.crownBonusAvailable) return;
     setState(() => _heldDice[index] = !_heldDice[index]);
   }
 
@@ -361,7 +361,8 @@ class _DiceBar extends StatelessWidget {
     final hasRolled = game.rollCount > 0;
     final mustSelect = game.mustSelectCategory;
     final canRoll = game.canRoll && !isRolling;
-    final remaining = 3 - game.rollCount;
+    final crownBonus = game.crownBonusAvailable;
+    final remaining = crownBonus ? 1 : math.max(0, 3 - game.rollCount);
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -412,7 +413,7 @@ class _DiceBar extends StatelessWidget {
 
           // Hold hint – only when dice can be held
           AnimatedOpacity(
-            opacity: hasRolled && !mustSelect && !isRolling ? 1.0 : 0.0,
+            opacity: hasRolled && !mustSelect && !isRolling && !crownBonus ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
             child: Padding(
               padding: const EdgeInsets.only(top: 5),
@@ -428,10 +429,79 @@ class _DiceBar extends StatelessWidget {
             ),
           ),
 
+          // Crown bonus banner
+          if (crownBonus)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00D4FF).withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF00D4FF).withValues(alpha: 0.40),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF00D4FF).withValues(alpha: 0.14),
+                      blurRadius: 18,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Text('✦', style: TextStyle(color: Color(0xFF9BE4FF), fontSize: 17)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Kronenmesser-Superkraft!',
+                            style: GoogleFonts.rajdhani(
+                              color: const Color(0xFF9BE4FF),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          Text(
+                            'Dein Vierling ist gesichert — würfle den letzten Würfel nochmal!',
+                            style: TextStyle(
+                              color: const Color(0xFF9BE4FF).withValues(alpha: 0.72),
+                              fontSize: 10.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+                  .animate()
+                  .fadeIn(duration: 350.ms)
+                  .slideY(begin: 0.3, end: 0, duration: 350.ms, curve: Curves.easeOut),
+            ),
+
           const SizedBox(height: 10),
 
           // Roll / hint button
-          SizedBox(
+          Container(
+            decoration: crownBonus
+                ? BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF00D4FF).withValues(alpha: 0.40),
+                        blurRadius: 20,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  )
+                : null,
+            child: SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: canRoll && !mustSelect ? onRoll : null,
@@ -445,7 +515,9 @@ class _DiceBar extends StatelessWidget {
                   : Icon(
                       mustSelect
                           ? Icons.touch_app_rounded
-                          : Icons.casino_rounded,
+                          : crownBonus
+                              ? Icons.auto_awesome_rounded
+                              : Icons.casino_rounded,
                       size: 20,
                     ),
               label: Text(
@@ -453,9 +525,11 @@ class _DiceBar extends StatelessWidget {
                     ? 'Würfeln...'
                     : mustSelect
                         ? 'Kategorie antippen!'
-                        : game.rollCount == 0
-                            ? 'WÜRFELN'
-                            : 'NOCHMAL  ·  $remaining ${remaining == 1 ? 'Wurf' : 'Würfe'} übrig',
+                        : crownBonus
+                            ? 'KRONENMESSER · BONUS-WURF'
+                            : game.rollCount == 0
+                                ? 'WÜRFELN'
+                                : 'NOCHMAL  ·  $remaining ${remaining == 1 ? 'Wurf' : 'Würfe'} übrig',
                 style: GoogleFonts.rajdhani(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -465,7 +539,9 @@ class _DiceBar extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: mustSelect
                     ? Colors.amber.shade700
-                    : theme.colorScheme.primary,
+                    : crownBonus
+                        ? const Color(0xFF003D5C)
+                        : theme.colorScheme.primary,
                 foregroundColor: Colors.white,
                 disabledBackgroundColor: isDark
                     ? Colors.white.withValues(alpha: 0.06)
@@ -481,6 +557,7 @@ class _DiceBar extends StatelessWidget {
               ),
             ),
           ),
+          ), // Container glow wrapper
         ],
       ),
     );

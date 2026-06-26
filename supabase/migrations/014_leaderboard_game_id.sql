@@ -4,6 +4,8 @@
 -- Daily-Leaderboard angeklickt und geladen werden kann.
 -- ============================================================
 
+DROP FUNCTION IF EXISTS public.kniffel_daily_leaderboard(uuid);
+
 CREATE OR REPLACE FUNCTION public.kniffel_daily_leaderboard(
   p_game_id uuid DEFAULT NULL
 ) RETURNS TABLE(

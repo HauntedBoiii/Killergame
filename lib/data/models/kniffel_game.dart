@@ -73,6 +73,8 @@ class KniffelGame {
   final DateTime? submittedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool crownBonusAvailable;
+  final bool crownBonusUsed;
 
   const KniffelGame({
     required this.id,
@@ -88,11 +90,13 @@ class KniffelGame {
     this.submittedAt,
     required this.createdAt,
     required this.updatedAt,
+    this.crownBonusAvailable = false,
+    this.crownBonusUsed = false,
   });
 
   bool get isCompleted => status == KniffelStatus.completed;
-  bool get canRoll => !isCompleted && rollCount < 3;
-  bool get mustSelectCategory => !isCompleted && rollCount == 3;
+  bool get canRoll => !isCompleted && (rollCount < 3 || crownBonusAvailable);
+  bool get mustSelectCategory => !isCompleted && rollCount >= 3 && !crownBonusAvailable;
   bool get canSelectCategory => !isCompleted && rollCount >= 1;
 
   int get upperSum {
@@ -150,6 +154,8 @@ class KniffelGame {
           : null,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
+      crownBonusAvailable: json['crown_bonus_available'] as bool? ?? false,
+      crownBonusUsed: json['crown_bonus_used'] as bool? ?? false,
     );
   }
 }

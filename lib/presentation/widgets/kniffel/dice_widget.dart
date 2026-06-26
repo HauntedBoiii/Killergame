@@ -422,160 +422,213 @@ class _CrackPainter extends CustomPainter {
 }
 
 // ═══════════════════════════════════════════════════════════
-// KRONENMESSER – Diamond-Rarity Dice
+// KRONENMESSER – Diamond-Rarity Animated Dice
 // ═══════════════════════════════════════════════════════════
 
-class _DiceCrown extends StatelessWidget {
+class _DiceCrown extends StatefulWidget {
   const _DiceCrown({required this.value, required this.isHeld, required this.size});
   final int value; final bool isHeld; final double size;
 
   @override
-  Widget build(BuildContext context) {
-    final bg        = isHeld ? const Color(0xFF0B1E4A) : const Color(0xFF060D20);
-    final border    = isHeld ? const Color(0xFFFFD700) : const Color(0xFF1C3468);
-    final pipColor  = isHeld ? const Color(0xFFFFD700) : const Color(0xFF9BE4FF);
-    final glowColor = isHeld ? const Color(0xFFFFAA00) : const Color(0xFF3AABDB);
+  State<_DiceCrown> createState() => _DiceCrownState();
+}
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      width: size, height: size,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: border, width: isHeld ? 2.0 : 1.5),
-        boxShadow: [
-          BoxShadow(color: glowColor.withValues(alpha: isHeld ? .70 : .38), blurRadius: isHeld ? 22 : 11),
-          if (isHeld) BoxShadow(color: const Color(0xFFFFD700).withValues(alpha: .28), blurRadius: 36, spreadRadius: 2),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8.5),
-        child: Stack(fit: StackFit.expand, children: [
-          CustomPaint(painter: _FacetPainter(isHeld: isHeld)),
-          Padding(
-            padding: EdgeInsets.all(size * 0.13),
-            child: CustomPaint(painter: _CrownPipPainter(value, pipColor, glowColor)),
+class _DiceCrownState extends State<_DiceCrown> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2800))
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) {
+        final t = _ctrl.value;
+        final held = widget.isHeld;
+        final sz = widget.size;
+
+        final pulse = math.sin(t * 2 * math.pi);
+        final glowBlur = held ? 26.0 : (13.0 + 5.0 * pulse);
+        final glowAlpha = held ? 0.90 : (0.38 + 0.14 * pulse);
+        final glowColor = held ? const Color(0xFFFFD700) : const Color(0xFF00C8FF);
+
+        final borderColor = held
+            ? const Color(0xFFFFD700)
+            : Color.lerp(
+                const Color(0xFF00D4FF),
+                const Color(0xFF7B68EE),
+                pulse * 0.5 + 0.5,
+              )!;
+
+        return Container(
+          width: sz, height: sz,
+          decoration: BoxDecoration(
+            color: const Color(0xFF030912),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor, width: held ? 2.0 : 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: glowColor.withValues(alpha: glowAlpha),
+                blurRadius: glowBlur,
+                spreadRadius: held ? 3 : 0,
+              ),
+              if (held)
+                BoxShadow(
+                  color: const Color(0xFFFFD700).withValues(alpha: 0.22),
+                  blurRadius: 40,
+                  spreadRadius: 5,
+                ),
+            ],
           ),
-          CustomPaint(painter: _SparkPainter(isHeld: isHeld)),
-        ]),
-      ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8.5),
+            child: RepaintBoundary(
+              child: Stack(fit: StackFit.expand, children: [
+                CustomPaint(painter: _CrownAmbientPainter(t: t, isHeld: held)),
+                CustomPaint(painter: _CrownShimmerPainter(t: t, isHeld: held)),
+                Padding(
+                  padding: EdgeInsets.all(sz * 0.13),
+                  child: CustomPaint(
+                    painter: _CrownGlowPipPainter(widget.value, t, held),
+                  ),
+                ),
+                CustomPaint(painter: _SparkPainter(isHeld: held)),
+              ]),
+            ),
+          ),
+        );
+      },
     );
   }
 }
 
-// Draws a brilliant-cut diamond facet pattern on the die face.
-class _FacetPainter extends CustomPainter {
+// Soft breathing radial glow at the die center.
+class _CrownAmbientPainter extends CustomPainter {
+  final double t;
   final bool isHeld;
-  const _FacetPainter({required this.isHeld});
+  const _CrownAmbientPainter({required this.t, required this.isHeld});
 
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2, cy = size.height / 2;
-    final lineA = isHeld ? .32 : .18;  // main line opacity
-    final lineB = isHeld ? .14 : .07;  // ring opacity
+    final pulse = math.sin(t * 2 * math.pi);
+    final color = isHeld ? const Color(0xFFFF7700) : const Color(0xFF0055BB);
+    final alpha = isHeld ? 0.25 : (0.08 + 0.05 * pulse);
+    final radius = size.width * (isHeld ? 0.70 : (0.55 + 0.08 * pulse));
 
-    final p = Paint()
-      ..color = const Color(0xFF7AB8E8).withValues(alpha: lineA)
-      ..strokeWidth = .55
-      ..style = PaintingStyle.stroke;
-    final pr = Paint()
-      ..color = const Color(0xFF4A90CC).withValues(alpha: lineB)
-      ..strokeWidth = .45
-      ..style = PaintingStyle.stroke;
-
-    // 8 radial lines: corners + edge midpoints
-    final rays = [
-      Offset(0, 0), Offset(size.width, 0),
-      Offset(size.width, size.height), Offset(0, size.height),
-      Offset(cx, 0), Offset(size.width, cy),
-      Offset(cx, size.height), Offset(0, cy),
-    ];
-    for (final end in rays) {
-      canvas.drawLine(Offset(cx, cy), end, p);
+    canvas.drawCircle(
+      Offset(cx, cy), radius,
+      Paint()
+        ..color = color.withValues(alpha: alpha)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.38),
+    );
+    if (isHeld) {
+      canvas.drawCircle(
+        Offset(cx, cy), size.width * 0.32,
+        Paint()
+          ..color = const Color(0xFFFFAA00).withValues(alpha: 0.14)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.width * 0.22),
+      );
     }
-
-    // Inner octagon at 55% and outer at 88% distance from center
-    canvas.drawPath(_octagon(cx, cy, cx * 0.55, cy * 0.55), pr);
-    canvas.drawPath(_octagon(cx, cy, cx * 0.88, cy * 0.88),
-        pr..color = const Color(0xFF4A90CC).withValues(alpha: lineB * 0.7));
-  }
-
-  // 8-point shape: corners + edge midpoints at fraction (rx, ry) from center.
-  Path _octagon(double cx, double cy, double rx, double ry) {
-    final pts = [
-      Offset(cx - rx, cy - ry), // top-left corner
-      Offset(cx,      cy - ry), // top edge mid
-      Offset(cx + rx, cy - ry), // top-right corner
-      Offset(cx + rx, cy),      // right edge mid
-      Offset(cx + rx, cy + ry), // bottom-right corner
-      Offset(cx,      cy + ry), // bottom edge mid
-      Offset(cx - rx, cy + ry), // bottom-left corner
-      Offset(cx - rx, cy),      // left edge mid
-    ];
-    final path = Path()..moveTo(pts[0].dx, pts[0].dy);
-    for (int i = 1; i < pts.length; i++) {
-      path.lineTo(pts[i].dx, pts[i].dy);
-    }
-    return path..close();
   }
 
   @override
-  bool shouldRepaint(_FacetPainter old) => old.isHeld != isHeld;
+  bool shouldRepaint(_CrownAmbientPainter old) => old.t != t || old.isHeld != isHeld;
 }
 
-// Crown-shaped pips: 3 peaks (center tallest), jewel dots at each tip.
-class _CrownPipPainter extends CustomPainter {
-  final int value;
-  final Color color, glowColor;
-  const _CrownPipPainter(this.value, this.color, this.glowColor);
+// Diagonal shimmer band that sweeps across the die face each cycle.
+class _CrownShimmerPainter extends CustomPainter {
+  final double t;
+  final bool isHeld;
+  const _CrownShimmerPainter({required this.t, required this.isHeld});
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final pip in _kPips[value] ?? const <Offset>[]) {
-      _drawCrown(canvas, pip.dx * size.width, pip.dy * size.height, size.width * .145);
-    }
-  }
+    final cx = size.width / 2, cy = size.height / 2;
+    final diagonal = math.sqrt(size.width * size.width + size.height * size.height);
 
-  void _drawCrown(Canvas canvas, double cx, double cy, double r) {
-    final w = r;          // half-width
-    final h = r * 1.35;   // total height
+    canvas.save();
+    canvas.translate(cx, cy);
+    canvas.rotate(-math.pi / 4);
 
-    // Crown silhouette path: left peak, left valley, center peak, right valley, right peak
-    final path = Path()
-      ..moveTo(cx - w,       cy + h * .38)   // bottom-left
-      ..lineTo(cx - w,       cy - h * .45)   // left peak
-      ..lineTo(cx - w * .42, cy - h * .08)   // left valley
-      ..lineTo(cx,           cy - h)          // center peak (tallest)
-      ..lineTo(cx + w * .42, cy - h * .08)   // right valley
-      ..lineTo(cx + w,       cy - h * .45)   // right peak
-      ..lineTo(cx + w,       cy + h * .38)   // bottom-right
-      ..close();
+    final bandCenter = diagonal * (t - 0.5);
+    final bandWidth = diagonal * 0.18;
+    final shimmerColor = isHeld ? const Color(0xFFFFD700) : const Color(0xFF7FEFFF);
+    final peakAlpha = isHeld ? 0.20 : 0.13;
 
-    // Glow halo
-    canvas.drawPath(path, Paint()
-      ..color = glowColor.withValues(alpha: .40)
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 1.4));
-
-    // Crown fill
-    canvas.drawPath(path, Paint()..color = color);
-
-    // Horizontal band line across the crown's ring
-    canvas.drawLine(
-      Offset(cx - w, cy + h * .08),
-      Offset(cx + w, cy + h * .08),
-      Paint()..color = color.withValues(alpha: .45)..strokeWidth = r * .18..style = PaintingStyle.stroke,
+    final rect = Rect.fromCenter(
+      center: Offset(bandCenter, 0),
+      width: bandWidth,
+      height: diagonal,
     );
-
-    // Jewel dots at each peak tip
-    final dotR = r * .155;
-    final dotP = Paint()..color = Colors.white.withValues(alpha: .92);
-    canvas.drawCircle(Offset(cx,     cy - h),        dotR, dotP);
-    canvas.drawCircle(Offset(cx - w, cy - h * .45),  dotR * .8, dotP);
-    canvas.drawCircle(Offset(cx + w, cy - h * .45),  dotR * .8, dotP);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [
+            Colors.transparent,
+            shimmerColor.withValues(alpha: peakAlpha * 0.3),
+            shimmerColor.withValues(alpha: peakAlpha),
+            shimmerColor.withValues(alpha: peakAlpha * 0.3),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
+        ).createShader(rect),
+    );
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_CrownPipPainter old) => old.value != value || old.color != color;
+  bool shouldRepaint(_CrownShimmerPainter old) => old.t != t || old.isHeld != isHeld;
+}
+
+// Triple-layer glowing orb pips that pulse with the animation.
+class _CrownGlowPipPainter extends CustomPainter {
+  final int value;
+  final double t;
+  final bool isHeld;
+  const _CrownGlowPipPainter(this.value, this.t, this.isHeld);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = size.width * 0.12;
+    final pulse = isHeld ? 1.0 : (0.90 + 0.10 * math.sin(t * 2 * math.pi + 0.9));
+
+    for (final pip in _kPips[value] ?? const <Offset>[]) {
+      final cx = pip.dx * size.width;
+      final cy = pip.dy * size.height;
+
+      canvas.drawCircle(Offset(cx, cy), r * 3.4 * pulse,
+          Paint()
+            ..color = (isHeld ? const Color(0xFFFFAA00) : const Color(0xFF00D4FF))
+                .withValues(alpha: 0.09)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 3.2));
+      canvas.drawCircle(Offset(cx, cy), r * 1.8 * pulse,
+          Paint()
+            ..color = (isHeld ? const Color(0xFFFFCC00) : const Color(0xFF38D4F5))
+                .withValues(alpha: 0.40)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 1.3));
+      canvas.drawCircle(Offset(cx, cy), r * pulse,
+          Paint()..color = isHeld ? const Color(0xFFFFD700) : const Color(0xFF9BE4FF));
+      canvas.drawCircle(Offset(cx, cy), r * 0.38,
+          Paint()..color = Colors.white.withValues(alpha: 0.95));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_CrownGlowPipPainter old) =>
+      old.value != value || old.t != t || old.isHeld != isHeld;
 }
 
 // 4-pointed sparkle (✦) in the top-right corner of the die.
@@ -598,7 +651,7 @@ class _SparkPainter extends CustomPainter {
       ..strokeWidth = isHeld ? 5.0 : 3.2
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3.5);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.5);
     final line = Paint()
       ..color = baseColor.withValues(alpha: alpha)
       ..strokeWidth = isHeld ? 1.3 : .85
