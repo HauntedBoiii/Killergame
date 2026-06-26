@@ -602,6 +602,7 @@ $$;
 
 -- ── get_broken_assignments ────────────────────────────────────
 
+DROP FUNCTION IF EXISTS public.get_broken_assignments(uuid);
 CREATE OR REPLACE FUNCTION public.get_broken_assignments(game_id_param uuid)
 RETURNS TABLE(killer_id uuid, display_name text)
 LANGUAGE plpgsql SECURITY DEFINER

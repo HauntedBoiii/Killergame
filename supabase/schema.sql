@@ -1404,9 +1404,9 @@ BEGIN
   ),
   -- Tagessieger: höchster Score pro Tag
   daily_winners AS (
-    SELECT DISTINCT ON (game_date) user_id, game_date
-    FROM filtered_games
-    ORDER BY game_date, final_score DESC
+    SELECT DISTINCT ON (fg.game_date) fg.user_id, fg.game_date
+    FROM filtered_games fg
+    ORDER BY fg.game_date, fg.final_score DESC
   ),
   -- Tagesverlierer: niedrigster Score, nur an Mehrspielertagen
   daily_losers AS (
