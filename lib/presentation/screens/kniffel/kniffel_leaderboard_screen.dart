@@ -7,6 +7,7 @@ import 'package:moerderspiel/data/models/kniffel_game.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
 import 'package:moerderspiel/presentation/providers/kniffel_provider.dart';
 import 'package:moerderspiel/presentation/widgets/common/avatar_widget.dart';
+import 'package:moerderspiel/presentation/widgets/kniffel/kniffel_tile_scorecard.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class KniffelLeaderboardScreen extends ConsumerStatefulWidget {
@@ -271,7 +272,9 @@ class _DailyRow extends StatelessWidget {
         ? DateFormat('HH:mm').format(entry.submittedAt!.toLocal())
         : '';
 
-    return Container(
+    return GestureDetector(
+      onTap: () => _showScorecard(context, entry),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -361,18 +364,37 @@ class _DailyRow extends StatelessWidget {
             ),
           ),
 
-          // Score
-          Text(
-            '${entry.finalScore}',
-            style: GoogleFonts.rajdhani(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: rankColor ??
-                  (isDark ? Colors.white : Colors.black),
-            ),
+          // Score + chevron hint
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${entry.finalScore}',
+                style: GoogleFonts.rajdhani(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: rankColor ?? (isDark ? Colors.white : Colors.black),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded,
+                  size: 18,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : Colors.black.withValues(alpha: 0.22)),
+            ],
           ),
         ],
       ),
+    )); // GestureDetector
+  }
+
+  void _showScorecard(BuildContext context, KniffelDailyEntry entry) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ScorecardSheet(entry: entry),
     );
   }
 }
@@ -635,6 +657,104 @@ class _ErrorCard extends StatelessWidget {
           style: const TextStyle(color: Colors.red),
           textAlign: TextAlign.center,
         ),
+      ),
+    );
+  }
+}
+
+// ── Scorecard bottom sheet ─────────────────────────────────
+
+class _ScorecardSheet extends ConsumerWidget {
+  final KniffelDailyEntry entry;
+  const _ScorecardSheet({required this.entry});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? const Color(0xFF1A1A1A) : Colors.white;
+    final game = ref.watch(kniffelScorecardProvider(entry.gameId));
+
+    return Container(
+      decoration: BoxDecoration(
+        color: sheetBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.only(
+        left: 16, right: 16, top: 12,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            width: 36, height: 4,
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: .2)
+                  : Colors.black.withValues(alpha: .15),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header: avatar + name + score
+          Row(children: [
+            KniffelAwareAvatarWidget(
+              imageUrl: entry.avatarUrl,
+              name: entry.username,
+              userId: entry.userId,
+              radius: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                entry.username,
+                style: GoogleFonts.rajdhani(
+                  fontSize: 18, fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ),
+            Text(
+              '${entry.finalScore}',
+              style: GoogleFonts.rajdhani(
+                fontSize: 28, fontWeight: FontWeight.w900,
+                color: entry.rank == 1
+                    ? const Color(0xFFFFB300)
+                    : (isDark ? Colors.white : Colors.black87),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              'Pts',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark
+                    ? Colors.white.withValues(alpha: .4)
+                    : Colors.black.withValues(alpha: .4),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+
+          // Scorecard
+          SizedBox(
+            height: 380,
+            child: game.when(
+              loading: () =>
+                  const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(
+                child: Text('Fehler: $e',
+                    style: const TextStyle(color: Colors.red)),
+              ),
+              data: (g) => KniffelTileScorecard(
+                scorecard: g.scorecard,
+                canSelect: false,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

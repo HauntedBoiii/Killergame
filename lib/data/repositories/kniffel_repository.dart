@@ -78,6 +78,15 @@ class KniffelRepository {
     return data?['user_id'] as String?;
   }
 
+  Future<KniffelGame> getGameById(String gameId) async {
+    final data = await _client
+        .from('kniffel_games')
+        .select()
+        .eq('id', gameId)
+        .single();
+    return KniffelGame.fromJson(data);
+  }
+
   /// Returns how many completed games today have a strictly higher score.
   /// rank = result + 1.
   Future<int?> getTodayRank(int myScore) async {

@@ -155,6 +155,7 @@ class KniffelGame {
 }
 
 class KniffelDailyEntry {
+  final String gameId;
   final String userId;
   final String username;
   final String? avatarUrl;
@@ -163,6 +164,7 @@ class KniffelDailyEntry {
   final int rank;
 
   const KniffelDailyEntry({
+    required this.gameId,
     required this.userId,
     required this.username,
     this.avatarUrl,
@@ -173,6 +175,7 @@ class KniffelDailyEntry {
 
   factory KniffelDailyEntry.fromJson(Map<String, dynamic> json) =>
       KniffelDailyEntry(
+        gameId: json['game_id'] as String,
         userId: json['user_id'] as String,
         username: json['username'] as String,
         avatarUrl: json['avatar_url'] as String?,

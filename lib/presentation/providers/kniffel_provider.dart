@@ -90,6 +90,12 @@ final dailyKniffelBadgesProvider = FutureProvider.autoDispose<
   return (winners: winners, lastPlace: lastPlace);
 });
 
+final kniffelScorecardProvider =
+    FutureProvider.autoDispose.family<KniffelGame, String>(
+  (ref, gameId) =>
+      ref.read(kniffelRepositoryProvider).getGameById(gameId),
+);
+
 /// Rank of the current user in today's global leaderboard (after completing).
 final todayKniffelRankProvider = FutureProvider.autoDispose<int?>((ref) async {
   final game = await ref.watch(kniffelGameProvider.future);
