@@ -1,9 +1,9 @@
 function _urlBase64ToUint8Array(base64String) {
-  var padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  var rawData = window.atob(base64);
-  var outputArray = new Uint8Array(rawData.length);
-  for (var i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
   return outputArray;
 }
 
@@ -31,8 +31,8 @@ window.requestPushSubscription = function (vapidPublicKey) {
         return resolve('ERROR:permission_not_granted:' + permission);
       }
 
-      var doSubscribe = function (reg) {
-        var subscribe = function () {
+      const doSubscribe = function (reg) {
+        const subscribe = function () {
           reg.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: _urlBase64ToUint8Array(vapidPublicKey),
@@ -52,18 +52,21 @@ window.requestPushSubscription = function (vapidPublicKey) {
         });
       };
 
-      // First clean up any old subscriptions from other SW registrations
+      // First clean up any old subscriptions from other SW registrations.
+      // .catch() ensures a failed unsubscribe doesn't block the new subscription.
       navigator.serviceWorker.getRegistrations().then(function (registrations) {
         return Promise.all(registrations.map(function (r) {
           return r.pushManager.getSubscription().then(function (sub) {
             if (sub) return sub.unsubscribe();
           });
         }));
+      }).catch(function (err) {
+        console.warn('[push] cleanup unsubscribe failed (ignored):', err);
       }).then(function () {
         // Register dedicated push SW at its own scope — no conflict with Flutter SW
         navigator.serviceWorker.register('/push-sw.js', { scope: '/push-notifications/' })
           .then(function (reg) {
-            var sw = reg.installing || reg.waiting || reg.active;
+            const sw = reg.installing || reg.waiting || reg.active;
             if (reg.active) {
               doSubscribe(reg);
             } else if (sw) {

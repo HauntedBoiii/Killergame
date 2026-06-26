@@ -144,6 +144,14 @@ CREATE TABLE public.push_subscriptions (
   CONSTRAINT push_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
 );
 
+-- game_task_disabled (Migration 007): Admin kann Tasks pro Spiel deaktivieren
+CREATE TABLE public.game_task_disabled (
+  game_id    uuid NOT NULL REFERENCES public.games(id)  ON DELETE CASCADE,
+  task_id    uuid NOT NULL REFERENCES public.tasks(id)  ON DELETE CASCADE,
+  disabled_at timestamp with time zone DEFAULT now(),
+  PRIMARY KEY (game_id, task_id)
+);
+
 -- ── Row Level Security ────────────────────────────────────────
 
 ALTER TABLE public.profiles            ENABLE ROW LEVEL SECURITY;
@@ -224,6 +232,14 @@ CREATE POLICY "push_sub_delete" ON public.push_subscriptions FOR DELETE USING (u
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.push_subscriptions TO service_role;
 
+ALTER TABLE public.game_task_disabled ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gtd_select" ON public.game_task_disabled FOR SELECT USING (
+  EXISTS (SELECT 1 FROM public.game_players WHERE game_id = game_task_disabled.game_id AND player_id = auth.uid())
+);
+CREATE POLICY "gtd_admin_write" ON public.game_task_disabled FOR ALL USING (
+  EXISTS (SELECT 1 FROM public.game_players WHERE game_id = game_task_disabled.game_id AND player_id = auth.uid() AND is_admin = true)
+);
+
 -- ── Functions (Bodies aus Chat-Nachrichten + 003 Fixes) ───────
 
 -- generate_game_code (aus Chat)
@@ -246,7 +262,8 @@ $$;
 
 -- handle_new_user (aus Chat)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 BEGIN
   INSERT INTO public.profiles (id, username)
   VALUES (
@@ -260,7 +277,8 @@ $$;
 
 -- is_game_admin (aus Chat)
 CREATE OR REPLACE FUNCTION public.is_game_admin(gid uuid)
-RETURNS boolean LANGUAGE sql SECURITY DEFINER AS $$
+RETURNS boolean LANGUAGE sql SECURITY DEFINER
+SET search_path = public AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.game_players
     WHERE game_id = gid AND player_id = auth.uid() AND is_admin = true
@@ -269,15 +287,17 @@ $$;
 
 -- get_my_game_ids (aus Chat)
 CREATE OR REPLACE FUNCTION public.get_my_game_ids()
-RETURNS SETOF uuid LANGUAGE sql SECURITY DEFINER AS $$
+RETURNS SETOF uuid LANGUAGE sql SECURITY DEFINER
+SET search_path = public AS $$
   SELECT game_id FROM public.game_players WHERE player_id = auth.uid();
 $$;
 
 -- join_game_by_code (aus Chat)
 CREATE OR REPLACE FUNCTION public.join_game_by_code(p_code text)
-RETURNS json LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS json LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
-  v_game    games%ROWTYPE;
+  v_game    public.games%ROWTYPE;
   v_user_id uuid;
 BEGIN
   v_user_id := auth.uid();
@@ -302,9 +322,10 @@ BEGIN
 END;
 $$;
 
--- start_game (aus Chat)
+-- start_game (011: Admin-Pool + game_task_disabled + Schwierigkeits-Sortierung + search_path)
 CREATE OR REPLACE FUNCTION public.start_game(game_id_param uuid)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   v_tasks_per_player  int;
   v_task_ids          uuid[];
@@ -324,59 +345,57 @@ BEGIN
   INTO v_tasks_per_player
   FROM public.games WHERE id = game_id_param;
 
+  -- Builtin tasks + Admin-eigene Tasks, abzüglich manuell deaktivierter
+  -- Sortierung: Schwierigkeit 1+2 vor 3, innerhalb zufällig
   SELECT ARRAY(
-    SELECT id FROM public.tasks
-    WHERE game_id = game_id_param OR is_builtin = true
-    ORDER BY random()
+    SELECT t.id FROM public.tasks t
+    WHERE (
+      t.is_builtin = true
+      OR t.created_by IN (
+        SELECT player_id FROM public.game_players
+        WHERE game_id = game_id_param AND is_admin = true
+      )
+    )
+    AND t.id NOT IN (
+      SELECT task_id FROM public.game_task_disabled WHERE game_id = game_id_param
+    )
+    ORDER BY CASE WHEN t.difficulty <= 2 THEN 0 ELSE 1 END, random()
   ) INTO v_task_ids;
 
   SELECT ARRAY(
     SELECT player_id FROM public.game_players
-    WHERE game_id = game_id_param
+    WHERE game_id = game_id_param AND is_alive = true
     ORDER BY random()
   ) INTO v_player_ids;
 
   v_n_players := COALESCE(array_length(v_player_ids, 1), 0);
   v_n_tasks   := COALESCE(array_length(v_task_ids, 1), 0);
 
-  IF v_n_players < 2 THEN
-    RAISE EXCEPTION 'Need at least 2 players';
-  END IF;
-  IF v_n_tasks = 0 THEN
-    RAISE EXCEPTION 'No tasks available';
-  END IF;
+  IF v_n_players < 2 THEN RAISE EXCEPTION 'Need at least 2 players'; END IF;
+  IF v_n_tasks = 0   THEN RAISE EXCEPTION 'No tasks available'; END IF;
 
   FOR round IN 1..v_tasks_per_player LOOP
     FOR i IN 1..v_n_players LOOP
       INSERT INTO public.player_tasks (game_id, player_id, task_id)
-      VALUES (
-        game_id_param,
-        v_player_ids[i],
-        v_task_ids[(v_slot % v_n_tasks) + 1]
-      );
+      VALUES (game_id_param, v_player_ids[i], v_task_ids[(v_slot % v_n_tasks) + 1]);
       v_slot := v_slot + 1;
     END LOOP;
   END LOOP;
 
+  -- Assignment-Ring: Spieler 1 → 2 → 3 → … → N → 1
   FOR i IN 1..v_n_players LOOP
     INSERT INTO public.assignments (game_id, killer_id, target_id, is_active)
-    VALUES (
-      game_id_param,
-      v_player_ids[i],
-      v_player_ids[(i % v_n_players) + 1],
-      true
-    );
+    VALUES (game_id_param, v_player_ids[i], v_player_ids[(i % v_n_players) + 1], true);
   END LOOP;
 
-  UPDATE public.games
-  SET status = 'active', started_at = now()
-  WHERE id = game_id_param;
+  UPDATE public.games SET status = 'active', started_at = now() WHERE id = game_id_param;
 END;
 $$;
 
--- confirm_kill (003_fixes + 004: Task als is_used markieren)
+-- confirm_kill (012: _award_morder_lootbox + 018: FOR UPDATE race-fix + search_path)
 CREATE OR REPLACE FUNCTION public.confirm_kill(elimination_id_param uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   elim          record;
   killer_assign record;
@@ -384,15 +403,13 @@ DECLARE
   alive_count   int;
   v_winner_id   uuid;
 BEGIN
-  SELECT * INTO elim FROM public.eliminations WHERE id = elimination_id_param;
+  SELECT * INTO elim
+  FROM public.eliminations
+  WHERE id = elimination_id_param
+  FOR UPDATE;
 
-  IF elim IS NULL THEN
-    RAISE EXCEPTION 'Elimination not found';
-  END IF;
-
-  IF elim.status != 'pending' THEN
-    RAISE EXCEPTION 'Elimination already processed';
-  END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Elimination not found'; END IF;
+  IF elim.status != 'pending' THEN RAISE EXCEPTION 'Elimination already processed'; END IF;
 
   IF elim.victim_id != auth.uid() THEN
     IF NOT EXISTS (
@@ -446,8 +463,7 @@ BEGIN
   UPDATE public.profiles SET total_kills = total_kills + 1 WHERE id = elim.killer_id;
 
   SELECT COUNT(*) INTO alive_count
-  FROM public.game_players
-  WHERE game_id = elim.game_id AND is_alive = true;
+  FROM public.game_players WHERE game_id = elim.game_id AND is_alive = true;
 
   IF alive_count <= 1 THEN
     SELECT player_id INTO v_winner_id FROM public.game_players
@@ -468,6 +484,8 @@ BEGIN
       WHERE game_id = elim.game_id AND player_id != v_winner_id
     );
 
+    PERFORM public._award_morder_lootbox(elim.game_id, v_winner_id);
+
     RETURN jsonb_build_object('game_over', true, 'winner_id', v_winner_id);
   END IF;
 
@@ -475,9 +493,10 @@ BEGIN
 END;
 $$;
 
--- leave_game (003_fixes + 004: Admin-Transfer)
+-- leave_game (012: _award_morder_lootbox + search_path)
 CREATE OR REPLACE FUNCTION public.leave_game(game_id_param uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   v_user_id       uuid;
   v_game_status   text;
@@ -591,6 +610,10 @@ BEGIN
       WHERE game_id = game_id_param AND player_id != v_winner_id
     );
 
+    IF v_winner_id IS NOT NULL THEN
+      PERFORM public._award_morder_lootbox(game_id_param, v_winner_id);
+    END IF;
+
     RETURN jsonb_build_object('left', true, 'game_over', true, 'winner_id', v_winner_id);
   END IF;
 
@@ -598,12 +621,13 @@ BEGIN
 END;
 $$;
 
--- admin_kick_player (neu aus 004)
+-- admin_kick_player (012: _award_morder_lootbox + search_path)
 CREATE OR REPLACE FUNCTION public.admin_kick_player(
   game_id_param    uuid,
   target_player_id uuid
 )
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   v_game_status   text;
   v_target_admin  boolean;
@@ -705,6 +729,10 @@ BEGIN
       WHERE game_id = game_id_param AND player_id != v_winner_id
     );
 
+    IF v_winner_id IS NOT NULL THEN
+      PERFORM public._award_morder_lootbox(game_id_param, v_winner_id);
+    END IF;
+
     RETURN jsonb_build_object('kicked', true, 'game_over', true, 'winner_id', v_winner_id);
   END IF;
 
@@ -718,7 +746,8 @@ CREATE OR REPLACE FUNCTION public.report_kill(
   victim_id_param uuid,
   task_id_param   uuid DEFAULT NULL
 )
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   v_user_id              uuid;
   v_tasks_are_single_use boolean;
@@ -764,7 +793,8 @@ CREATE OR REPLACE FUNCTION public.admin_swap_assignments(
   player_a_id   uuid,
   player_b_id   uuid
 )
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   target_a    uuid;
   target_b    uuid;
@@ -800,7 +830,8 @@ $$;
 -- get_broken_assignments (aus Chat)
 CREATE OR REPLACE FUNCTION public.get_broken_assignments(game_id_param uuid)
 RETURNS TABLE(killer_id uuid, display_name text)
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.game_players
@@ -816,6 +847,32 @@ BEGIN
   WHERE a.game_id = game_id_param
     AND a.is_active = true
     AND a.target_id = a.killer_id;
+END;
+$$;
+
+-- reset_game_to_lobby (Migration 008)
+CREATE OR REPLACE FUNCTION public.reset_game_to_lobby(game_id_param uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.game_players
+    WHERE game_id = game_id_param AND player_id = auth.uid() AND is_admin = true
+  ) THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+
+  DELETE FROM public.assignments  WHERE game_id = game_id_param;
+  DELETE FROM public.player_tasks WHERE game_id = game_id_param;
+  DELETE FROM public.eliminations WHERE game_id = game_id_param;
+
+  UPDATE public.game_players
+  SET is_alive = true, kills = 0, is_ready = false
+  WHERE game_id = game_id_param;
+
+  UPDATE public.games
+  SET status = 'lobby', started_at = null
+  WHERE id = game_id_param;
 END;
 $$;
 
@@ -912,6 +969,16 @@ GRANT ALL ON public.kniffel_games TO service_role;
 CREATE INDEX IF NOT EXISTS idx_kniffel_completed_date_user
   ON public.kniffel_games (game_date, user_id, final_score DESC)
   WHERE status = 'completed';
+
+-- Indizes (Migration 018): häufige Assignment- und Game-Player-Queries
+CREATE INDEX IF NOT EXISTS idx_assignments_killer_active
+  ON public.assignments (game_id, killer_id) WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS idx_assignments_target_active
+  ON public.assignments (game_id, target_id) WHERE is_active = true;
+
+CREATE INDEX IF NOT EXISTS idx_game_players_alive
+  ON public.game_players (game_id) WHERE is_alive = true;
 
 -- ── Tester-UUID: zentrale Helper-Funktion (017) ───────────────
 
@@ -1031,7 +1098,8 @@ GRANT EXECUTE ON FUNCTION public.kniffel_start_or_resume TO authenticated;
 CREATE OR REPLACE FUNCTION public.kniffel_roll(
   p_game_id uuid,
   p_held    boolean[] DEFAULT '{false,false,false,false,false}'
-) RETURNS public.kniffel_games LANGUAGE plpgsql SECURITY DEFINER AS $$
+) RETURNS public.kniffel_games LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   v_game           public.kniffel_games;
   v_new_dice       integer[];
@@ -1151,7 +1219,8 @@ CREATE OR REPLACE FUNCTION public.kniffel_select_category(
   p_game_id  uuid,
   p_category text,
   p_score    integer
-) RETURNS public.kniffel_games LANGUAGE plpgsql SECURITY DEFINER AS $$
+) RETURNS public.kniffel_games LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 DECLARE
   v_game          public.kniffel_games;
   v_valid_score   integer;
@@ -1371,7 +1440,8 @@ GRANT EXECUTE ON FUNCTION public.kniffel_alltime_leaderboard TO authenticated;
 -- HINWEIS: <project-ref> und <service_role_key> ersetzen!
 
 CREATE OR REPLACE FUNCTION public.notify_kniffel_completed()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
 BEGIN
   IF NEW.status = 'completed' AND OLD.status = 'in_progress' THEN
     PERFORM net.http_post(
@@ -1412,7 +1482,7 @@ CREATE TABLE public.loot_items (
   item_type  text NOT NULL CHECK (item_type IN ('card', 'dice')),
   design_key text NOT NULL,
   name       text NOT NULL,
-  rarity     text NOT NULL CHECK (rarity IN ('bronze', 'silver', 'gold')),
+  rarity     text NOT NULL CHECK (rarity IN ('bronze', 'silver', 'gold', 'diamond')),
   sort_order int  NOT NULL DEFAULT 0,
   UNIQUE(item_type, design_key)
 );
@@ -1463,4 +1533,360 @@ CREATE TABLE public.kniffel_lootbox_awards (
 ALTER TABLE public.kniffel_lootbox_awards ENABLE ROW LEVEL SECURITY;
 -- Kein direkter Client-Zugriff; Schreiben nur über SECURITY DEFINER-Funktionen.
 
--- Vollständige Funktionen und Seed-Daten: siehe Migration 012_lootbox_system.sql
+-- ── RLS Lootbox-Tabellen ──────────────────────────────────────
+
+ALTER TABLE public.loot_items         ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "loot_items_read" ON public.loot_items
+  FOR SELECT TO authenticated USING (true);
+
+ALTER TABLE public.user_inventory     ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "user_inventory_own" ON public.user_inventory
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+ALTER TABLE public.user_credits       ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "user_credits_own" ON public.user_credits
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+ALTER TABLE public.user_lootboxes     ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "user_lootboxes_own" ON public.user_lootboxes
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+ALTER TABLE public.user_active_designs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "user_active_designs_own" ON public.user_active_designs
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
+
+-- kniffel_lootbox_awards: kein direkter Client-Zugriff (SECURITY DEFINER only)
+
+-- ── Seed: Loot-Items (012 + 013 Kronenmesser) ─────────────────
+
+INSERT INTO public.loot_items (item_type, design_key, name, rarity, sort_order) VALUES
+  ('card', 'smoke',   'Dark Smoke',       'bronze',  10),
+  ('card', 'accent',  'Farbwechsel',      'bronze',  20),
+  ('card', 'glass',   'Glas mit Shimmer', 'silver',  30),
+  ('card', 'neon',    'Neon Rand',        'silver',  40),
+  ('card', 'wanted',  'Steckbrief',       'silver',  50),
+  ('card', 'bond',    'Agent 007',        'gold',    60),
+  ('card', 'sparks',  'Funken',           'gold',    70),
+  ('dice', 'wood',    'Holz',             'bronze',  10),
+  ('dice', 'neon',    'Neon',             'bronze',  20),
+  ('dice', 'vegas',   'Vegas',            'bronze',  30),
+  ('dice', 'blood',   'Blut',             'bronze',  40),
+  ('dice', 'app_red', 'App-Rot',          'bronze',  50),
+  ('dice', 'digital', 'Digital',          'bronze',  60),
+  ('dice', 'crystal', 'Kristall',         'bronze',  70),
+  ('dice', 'crown',   'Kronenmesser',     'diamond', 100);
+
+-- ── Lootbox-Funktionen (012 + 018: search_path + FOR UPDATE-Fixes) ───
+
+CREATE OR REPLACE FUNCTION public._ensure_loot_rows(p_user_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.user_credits (user_id) VALUES (p_user_id) ON CONFLICT DO NOTHING;
+  INSERT INTO public.user_active_designs (user_id) VALUES (p_user_id) ON CONFLICT DO NOTHING;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_loot_state()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+BEGIN
+  PERFORM public._ensure_loot_rows(v_user_id);
+
+  RETURN jsonb_build_object(
+    'lootboxes', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+        'id',           id,
+        'source',       source,
+        'status',       CASE WHEN status = 'pending' AND available_at <= now() THEN 'ready' ELSE status END,
+        'available_at', available_at,
+        'created_at',   created_at
+      ) ORDER BY created_at)
+      FROM public.user_lootboxes
+      WHERE user_id = v_user_id AND status != 'opened'
+    ), '[]'::jsonb),
+    'inventory', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+        'item_id',     ui.item_id,
+        'design_key',  li.design_key,
+        'item_type',   li.item_type,
+        'name',        li.name,
+        'rarity',      li.rarity,
+        'unlocked_at', ui.unlocked_at
+      ) ORDER BY li.item_type, li.sort_order)
+      FROM public.user_inventory ui
+      JOIN public.loot_items li ON li.id = ui.item_id
+      WHERE ui.user_id = v_user_id
+    ), '[]'::jsonb),
+    'credits', COALESCE((
+      SELECT jsonb_build_object('bronze', bronze_credits, 'silver', silver_credits, 'gold', gold_credits)
+      FROM public.user_credits WHERE user_id = v_user_id
+    ), jsonb_build_object('bronze', 0, 'silver', 0, 'gold', 0)),
+    'active_card_key', (
+      SELECT li.design_key FROM public.user_active_designs uad
+      JOIN public.loot_items li ON li.id = uad.active_card_id
+      WHERE uad.user_id = v_user_id
+    ),
+    'active_dice_key', (
+      SELECT li.design_key FROM public.user_active_designs uad
+      JOIN public.loot_items li ON li.id = uad.active_dice_id
+      WHERE uad.user_id = v_user_id
+    )
+  );
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.get_loot_state TO authenticated;
+
+-- open_lootbox (013: Diamond 0.5 %, Trostpreis Gold-Credit bei bereits besessen)
+CREATE OR REPLACE FUNCTION public.open_lootbox(p_lootbox_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id    uuid := auth.uid();
+  v_box        public.user_lootboxes;
+  v_roll       float;
+  v_rarity     text;
+  v_credit_rar text;
+  v_item       public.loot_items;
+BEGIN
+  SELECT * INTO v_box
+  FROM public.user_lootboxes
+  WHERE id = p_lootbox_id AND user_id = v_user_id AND status != 'opened'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN RAISE EXCEPTION 'Lootbox nicht gefunden oder bereits geöffnet'; END IF;
+  IF v_box.available_at > now() THEN RAISE EXCEPTION 'Lootbox noch nicht verfügbar'; END IF;
+
+  PERFORM public._ensure_loot_rows(v_user_id);
+
+  v_roll   := random();
+  v_rarity := CASE
+    WHEN v_roll < 0.700 THEN 'bronze'
+    WHEN v_roll < 0.900 THEN 'silver'
+    WHEN v_roll < 0.995 THEN 'gold'
+    ELSE                      'diamond'
+  END;
+
+  SELECT li.* INTO v_item
+  FROM public.loot_items li
+  WHERE li.rarity = v_rarity
+    AND NOT EXISTS (
+      SELECT 1 FROM public.user_inventory ui
+      WHERE ui.user_id = v_user_id AND ui.item_id = li.id
+    )
+  ORDER BY random()
+  LIMIT 1;
+
+  UPDATE public.user_lootboxes SET status = 'opened', opened_at = now() WHERE id = p_lootbox_id;
+
+  IF v_item.id IS NULL THEN
+    v_credit_rar := CASE WHEN v_rarity = 'diamond' THEN 'gold' ELSE v_rarity END;
+    IF v_credit_rar = 'bronze' THEN
+      UPDATE public.user_credits SET bronze_credits = bronze_credits + 1 WHERE user_id = v_user_id;
+    ELSIF v_credit_rar = 'silver' THEN
+      UPDATE public.user_credits SET silver_credits = silver_credits + 1 WHERE user_id = v_user_id;
+    ELSE
+      UPDATE public.user_credits SET gold_credits = gold_credits + 1 WHERE user_id = v_user_id;
+    END IF;
+    RETURN jsonb_build_object('type', 'credit', 'rarity', v_credit_rar);
+  ELSE
+    INSERT INTO public.user_inventory (user_id, item_id) VALUES (v_user_id, v_item.id);
+    RETURN jsonb_build_object(
+      'type', 'item', 'rarity', v_rarity,
+      'item', jsonb_build_object(
+        'item_id', v_item.id, 'design_key', v_item.design_key,
+        'item_type', v_item.item_type, 'name', v_item.name, 'rarity', v_item.rarity
+      )
+    );
+  END IF;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.open_lootbox TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.trade_credits(p_rarity text, p_direction text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_c       public.user_credits;
+  v_new     public.user_credits;
+BEGIN
+  SELECT * INTO v_c FROM public.user_credits WHERE user_id = v_user_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Kein Credits-Eintrag'; END IF;
+
+  IF p_direction = 'up' THEN
+    IF p_rarity = 'bronze' THEN
+      IF v_c.bronze_credits < 2 THEN RAISE EXCEPTION 'Nicht genug Bronze-Credits'; END IF;
+      UPDATE public.user_credits SET bronze_credits = bronze_credits - 2, silver_credits = silver_credits + 1
+      WHERE user_id = v_user_id RETURNING * INTO v_new;
+    ELSIF p_rarity = 'silver' THEN
+      IF v_c.silver_credits < 2 THEN RAISE EXCEPTION 'Nicht genug Silber-Credits'; END IF;
+      UPDATE public.user_credits SET silver_credits = silver_credits - 2, gold_credits = gold_credits + 1
+      WHERE user_id = v_user_id RETURNING * INTO v_new;
+    ELSE
+      RAISE EXCEPTION 'Gold kann nicht aufgewertet werden';
+    END IF;
+  ELSIF p_direction = 'down' THEN
+    IF p_rarity = 'gold' THEN
+      IF v_c.gold_credits < 1 THEN RAISE EXCEPTION 'Nicht genug Gold-Credits'; END IF;
+      UPDATE public.user_credits SET gold_credits = gold_credits - 1, silver_credits = silver_credits + 2
+      WHERE user_id = v_user_id RETURNING * INTO v_new;
+    ELSIF p_rarity = 'silver' THEN
+      IF v_c.silver_credits < 1 THEN RAISE EXCEPTION 'Nicht genug Silber-Credits'; END IF;
+      UPDATE public.user_credits SET silver_credits = silver_credits - 1, bronze_credits = bronze_credits + 2
+      WHERE user_id = v_user_id RETURNING * INTO v_new;
+    ELSE
+      RAISE EXCEPTION 'Bronze kann nicht abgewertet werden';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'Ungültige Richtung (up/down erwartet)';
+  END IF;
+
+  RETURN jsonb_build_object('bronze', v_new.bronze_credits, 'silver', v_new.silver_credits, 'gold', v_new.gold_credits);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.trade_credits TO authenticated;
+
+-- spend_credits (018: FOR UPDATE → verhindert TOCTOU bei parallelen Requests)
+CREATE OR REPLACE FUNCTION public.spend_credits(p_rarity text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_c       public.user_credits;
+  v_item    public.loot_items;
+BEGIN
+  PERFORM public._ensure_loot_rows(v_user_id);
+
+  SELECT * INTO v_c FROM public.user_credits WHERE user_id = v_user_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Kein Credits-Eintrag'; END IF;
+
+  IF p_rarity = 'bronze' THEN
+    IF v_c.bronze_credits < 1 THEN RAISE EXCEPTION 'Nicht genug Bronze-Credits'; END IF;
+  ELSIF p_rarity = 'silver' THEN
+    IF v_c.silver_credits < 1 THEN RAISE EXCEPTION 'Nicht genug Silber-Credits'; END IF;
+  ELSIF p_rarity = 'gold' THEN
+    IF v_c.gold_credits < 1 THEN RAISE EXCEPTION 'Nicht genug Gold-Credits'; END IF;
+  ELSE
+    RAISE EXCEPTION 'Ungültige Seltenheit';
+  END IF;
+
+  SELECT li.* INTO v_item
+  FROM public.loot_items li
+  WHERE li.rarity = p_rarity
+    AND NOT EXISTS (
+      SELECT 1 FROM public.user_inventory ui
+      WHERE ui.user_id = v_user_id AND ui.item_id = li.id
+    )
+  ORDER BY random()
+  LIMIT 1;
+
+  IF v_item.id IS NULL THEN
+    RAISE EXCEPTION 'Alle Items dieser Seltenheit bereits freigeschaltet';
+  END IF;
+
+  IF p_rarity = 'bronze' THEN
+    UPDATE public.user_credits SET bronze_credits = bronze_credits - 1 WHERE user_id = v_user_id;
+  ELSIF p_rarity = 'silver' THEN
+    UPDATE public.user_credits SET silver_credits = silver_credits - 1 WHERE user_id = v_user_id;
+  ELSE
+    UPDATE public.user_credits SET gold_credits = gold_credits - 1 WHERE user_id = v_user_id;
+  END IF;
+
+  INSERT INTO public.user_inventory (user_id, item_id) VALUES (v_user_id, v_item.id);
+
+  RETURN jsonb_build_object(
+    'item', jsonb_build_object(
+      'item_id', v_item.id, 'design_key', v_item.design_key,
+      'item_type', v_item.item_type, 'name', v_item.name, 'rarity', v_item.rarity
+    )
+  );
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.spend_credits TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.set_active_design(p_item_id uuid, p_type text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+BEGIN
+  IF p_item_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.user_inventory ui
+      JOIN public.loot_items li ON li.id = ui.item_id
+      WHERE ui.user_id = v_user_id AND ui.item_id = p_item_id AND li.item_type = p_type
+    ) THEN
+      RAISE EXCEPTION 'Item nicht im Inventar oder falscher Typ';
+    END IF;
+  END IF;
+
+  INSERT INTO public.user_active_designs (user_id, active_card_id, active_dice_id)
+  VALUES (
+    v_user_id,
+    CASE WHEN p_type = 'card' THEN p_item_id ELSE NULL END,
+    CASE WHEN p_type = 'dice' THEN p_item_id ELSE NULL END
+  )
+  ON CONFLICT (user_id) DO UPDATE SET
+    active_card_id = CASE WHEN p_type = 'card' THEN p_item_id ELSE public.user_active_designs.active_card_id END,
+    active_dice_id = CASE WHEN p_type = 'dice' THEN p_item_id ELSE public.user_active_designs.active_dice_id END;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.set_active_design TO authenticated;
+
+CREATE OR REPLACE FUNCTION public._award_morder_lootbox(p_game_id uuid, p_winner_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_count int;
+BEGIN
+  SELECT COUNT(*) INTO v_count FROM public.game_players WHERE game_id = p_game_id;
+  IF v_count >= 8 THEN
+    INSERT INTO public.user_lootboxes (user_id, source, status, available_at)
+    VALUES (p_winner_id, 'morder', 'ready', now());
+  END IF;
+END;
+$$;
+
+-- _process_kniffel_lootboxes (018: Tester-Filter → kein Tages-Lootbox für Tester)
+CREATE OR REPLACE FUNCTION public._process_kniffel_lootboxes()
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_today  date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
+  v_rec    record;
+  v_winner uuid;
+BEGIN
+  FOR v_rec IN
+    SELECT DISTINCT kg.game_date
+    FROM public.kniffel_games kg
+    WHERE kg.game_date < v_today
+      AND kg.game_date >= v_today - INTERVAL '30 days'
+      AND kg.status = 'completed'
+      AND NOT EXISTS (
+        SELECT 1 FROM public.kniffel_lootbox_awards kla
+        WHERE kla.game_date = kg.game_date
+      )
+    ORDER BY kg.game_date
+  LOOP
+    SELECT kg.user_id INTO v_winner
+    FROM public.kniffel_games kg
+    WHERE kg.game_date = v_rec.game_date
+      AND kg.status    = 'completed'
+      AND kg.user_id  != public._tester_uuid()
+    ORDER BY kg.final_score DESC, kg.submitted_at ASC
+    LIMIT 1;
+
+    IF v_winner IS NOT NULL THEN
+      INSERT INTO public.kniffel_lootbox_awards (game_date, winner_id)
+      VALUES (v_rec.game_date, v_winner)
+      ON CONFLICT DO NOTHING;
+
+      INSERT INTO public.user_lootboxes (user_id, source, status, available_at)
+      VALUES (v_winner, 'kniffel', 'ready', now());
+    END IF;
+  END LOOP;
+END;
+$$;
