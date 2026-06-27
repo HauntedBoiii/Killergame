@@ -12,6 +12,7 @@ import 'package:moerderspiel/data/models/elimination.dart';
 import 'package:moerderspiel/data/models/game.dart';
 import 'package:moerderspiel/presentation/providers/auth_provider.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
+import 'package:moerderspiel/presentation/widgets/common/app_button.dart';
 import 'package:moerderspiel/presentation/widgets/common/avatar_widget.dart';
 import 'package:moerderspiel/presentation/widgets/game/kill_history_item.dart';
 
@@ -152,7 +153,7 @@ class _GameBody extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: _InfoCard(
                   icon: Icons.shield_outlined,
-                  color: Colors.blue,
+                  color: Colors.grey,
                   title: 'Schutzzonen',
                   content: game.settings.safeZones.join(' · '),
                 ).animate().fadeIn(delay: 50.ms),
@@ -163,7 +164,7 @@ class _GameBody extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: _InfoCard(
                   icon: Icons.access_time,
-                  color: Colors.purple,
+                  color: Colors.grey,
                   title: 'Schutzzeiten',
                   content: game.settings.protectionTimes
                       .map((p) => '${p.startTime}–${p.endTime}${p.label != null ? ' (${p.label})' : ''}')
@@ -232,47 +233,53 @@ class _GameBody extends ConsumerWidget {
                 child: myTasksAsync.when(
                   data: (tasks) {
                     if (tasks.isEmpty) return const SizedBox.shrink();
-                    return GestureDetector(
-                      onTap: () => context.push('/game/$gameId/tasks'),
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: theme.cardTheme.color,
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.cardTheme.color,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.6)),
+                      ),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.orange.withValues(alpha: 0.6)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text('📋', style: TextStyle(fontSize: 24)),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${tasks.length} Aufgabe(n)',
-                                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  Text(
-                                    tasks.first.task?.description ?? '',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 13, color: Colors.orange),
+                          onTap: () => context.push('/game/$gameId/tasks'),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
-                                ],
-                              ),
+                                  child: const Text('📋', style: TextStyle(fontSize: 24)),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('${tasks.length} Aufgabe(n)',
+                                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      Text(
+                                        tasks.first.task?.description ?? '',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 13, color: theme.colorScheme.primary),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                              ],
                             ),
-                            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-                          ],
+                          ),
                         ),
-                      ).animate().fadeIn(delay: 200.ms),
-                    );
+                      ),
+                    ).animate().fadeIn(delay: 200.ms);
                   },
                   loading: () => const SizedBox.shrink(),
                   error: (_, __) => const SizedBox.shrink(),
@@ -288,26 +295,26 @@ class _GameBody extends ConsumerWidget {
                   decoration: BoxDecoration(
                     color: theme.cardTheme.color,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.teal.withValues(alpha: 0.6)),
+                    border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.6)),
                   ),
                   child: Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Colors.teal.withValues(alpha: 0.15),
+                          color: theme.colorScheme.primary.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Text('🎁', style: TextStyle(fontSize: 24)),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Gegenstand übergeben', style: TextStyle(fontWeight: FontWeight.bold)),
+                            const Text('Gegenstand übergeben', style: TextStyle(fontWeight: FontWeight.bold)),
                             Text('Übergib deinem Ziel den vereinbarten Gegenstand',
-                                style: TextStyle(fontSize: 13, color: Colors.teal)),
+                                style: TextStyle(fontSize: 13, color: theme.colorScheme.primary)),
                           ],
                         ),
                       ),
@@ -486,20 +493,13 @@ class _LeaveButtonState extends ConsumerState<_LeaveButton> {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
+    return AppButton(
+      label: 'Spiel verlassen',
       onPressed: _loading ? null : _leave,
-      icon: _loading
-          ? const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.exit_to_app, size: 16),
-      label: const Text('Spiel verlassen'),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.grey,
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.5)),
-        minimumSize: const Size(double.infinity, 44),
-      ),
+      isLoading: _loading,
+      outlined: true,
+      color: Colors.grey,
+      icon: Icons.exit_to_app,
     );
   }
 }
@@ -791,7 +791,7 @@ class _PendingKillBannerState extends ConsumerState<_PendingKillBanner>
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.red.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: Colors.red.withValues(alpha: _glowAnim.value),
             width: 2.5,
@@ -839,7 +839,10 @@ class _PendingKillBannerState extends ConsumerState<_PendingKillBanner>
           Row(
             children: [
               Expanded(
-                child: ElevatedButton.icon(
+                child: AppButton(
+                  label: 'Bestätigen',
+                  icon: Icons.check,
+                  color: Colors.green.shade700,
                   onPressed: () async {
                     HapticFeedback.mediumImpact();
                     try {
@@ -852,28 +855,20 @@ class _PendingKillBannerState extends ConsumerState<_PendingKillBanner>
                       }
                     }
                   },
-                  icon: const Icon(Icons.check, size: 18),
-                  label: const Text('Bestätigen'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade700,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: OutlinedButton.icon(
+                child: AppButton(
+                  label: 'Ablehnen',
+                  icon: Icons.close,
+                  outlined: true,
+                  color: Colors.red,
                   onPressed: () async {
                     try {
                       await ref.read(gameRepositoryProvider).rejectKill(widget.elimination.id);
                     } catch (_) {}
                   },
-                  icon: const Icon(Icons.close, color: Colors.red, size: 18),
-                  label: const Text('Ablehnen', style: TextStyle(color: Colors.red)),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
                 ),
               ),
             ],

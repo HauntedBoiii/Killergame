@@ -33,7 +33,16 @@ class AppButton extends StatelessWidget {
           );
 
     final btn = outlined
-        ? OutlinedButton(onPressed: isLoading ? null : onPressed, child: child)
+        ? OutlinedButton(
+            onPressed: isLoading ? null : onPressed,
+            style: color != null
+                ? OutlinedButton.styleFrom(
+                    foregroundColor: color,
+                    side: BorderSide(color: color!),
+                  )
+                : null,
+            child: child,
+          )
         : ElevatedButton(
             onPressed: isLoading ? null : onPressed,
             style: color != null

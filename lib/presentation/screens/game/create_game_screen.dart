@@ -110,23 +110,12 @@ class _CreateGameScreenState extends ConsumerState<CreateGameScreen> {
               children: [
                 _SettingsTile(
                   icon: Icons.shield_outlined,
-                  iconColor: Colors.blue,
+                  iconColor: Colors.grey,
                   title: 'Admin-Bestätigung',
                   subtitle: 'Kills müssen vom Admin bestätigt werden',
                   trailing: Switch(
                     value: _requireAdmin,
                     onChanged: (v) => setState(() => _requireAdmin = v),
-                  ),
-                ),
-                const Divider(height: 1, indent: 16),
-                _SettingsTile(
-                  icon: Icons.group_outlined,
-                  iconColor: Colors.teal,
-                  title: 'Teammodus',
-                  subtitle: 'Noch nicht implementiert (Dummy)',
-                  trailing: Switch(
-                    value: _teamMode,
-                    onChanged: (v) => setState(() => _teamMode = v),
                   ),
                 ),
               ],
@@ -142,7 +131,7 @@ class _CreateGameScreenState extends ConsumerState<CreateGameScreen> {
               _SettingsCard(
                 icon: Icons.task_alt,
                 label: 'Aufgaben',
-                iconColor: Colors.orange,
+                iconColor: Colors.grey,
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -181,7 +170,7 @@ class _CreateGameScreenState extends ConsumerState<CreateGameScreen> {
                   const Divider(height: 1),
                   _SettingsTile(
                     icon: Icons.electric_bolt_outlined,
-                    iconColor: Colors.orange,
+                    iconColor: Colors.grey,
                     title: 'Aufgaben sind Einweg',
                     subtitle: 'Benutzte Aufgaben sind verbraucht',
                     trailing: Switch(
@@ -194,83 +183,111 @@ class _CreateGameScreenState extends ConsumerState<CreateGameScreen> {
             ],
 
             const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            _SettingsCard(
+              icon: Icons.shield_outlined,
+              label: 'Schutzzonen',
+              trailing: IconButton(
+                icon: const Icon(Icons.add_circle_outline, size: 20),
+                onPressed: () => setState(() => _safeZoneCtrl.add(TextEditingController())),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
               children: [
-                Text('Schutzzonen', style: theme.textTheme.titleLarge),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: () => setState(() => _safeZoneCtrl.add(TextEditingController())),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Text(
+                    'Orte, an denen niemand eliminiert werden darf (z.B. Küche, Schule)',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                 ),
-              ],
-            ),
-            const Text(
-              'Orte, an denen niemand eliminiert werden darf (z.B. Küche, Schule)',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            ...List.generate(_safeZoneCtrl.length, (i) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _safeZoneCtrl[i],
-                      decoration: InputDecoration(
-                        labelText: 'Schutzzone ${i + 1}',
-                        prefixIcon: const Icon(Icons.shield_outlined),
-                      ),
+                if (_safeZoneCtrl.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text('Keine Schutzzonen definiert.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 8, 12),
+                    child: Column(
+                      children: List.generate(_safeZoneCtrl.length, (i) => Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _safeZoneCtrl[i],
+                                decoration: InputDecoration(
+                                  labelText: 'Schutzzone ${i + 1}',
+                                  prefixIcon: const Icon(Icons.shield_outlined),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                              onPressed: () => setState(() {
+                                _safeZoneCtrl[i].dispose();
+                                _safeZoneCtrl.removeAt(i);
+                              }),
+                            ),
+                          ],
+                        ),
+                      )),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                    onPressed: () => setState(() {
-                      _safeZoneCtrl[i].dispose();
-                      _safeZoneCtrl.removeAt(i);
-                    }),
-                  ),
-                ],
-              ),
-            )),
-
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Schutzzeiten', style: theme.textTheme.titleLarge),
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: () async {
-                    final start = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 22, minute: 0));
-                    if (start == null || !mounted) return;
-                    final end = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 8, minute: 0));
-                    if (end == null) return;
-                    setState(() => _protectionTimes.add(ProtectionTime(
-                      startTime: '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}',
-                      endTime: '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
-                      label: 'Nachtruhe',
-                    )));
-                  },
-                ),
               ],
             ),
-            const Text(
-              'Zeiträume, in denen das Spiel pausiert (z.B. nachts)',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            ...List.generate(_protectionTimes.length, (i) {
-              final pt = _protectionTimes[i];
-              return ListTile(
-                leading: const Icon(Icons.access_time, color: Colors.blue),
-                title: Text('${pt.startTime} – ${pt.endTime}'),
-                subtitle: Text(pt.label ?? ''),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: () => setState(() => _protectionTimes.removeAt(i)),
+
+            const SizedBox(height: 24),
+            _SettingsCard(
+              icon: Icons.access_time,
+              label: 'Schutzzeiten',
+              trailing: IconButton(
+                icon: const Icon(Icons.add_circle_outline, size: 20),
+                onPressed: () async {
+                  final start = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 22, minute: 0));
+                  if (start == null || !mounted) return;
+                  final end = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 8, minute: 0));
+                  if (end == null) return;
+                  setState(() => _protectionTimes.add(ProtectionTime(
+                    startTime: '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}',
+                    endTime: '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
+                    label: 'Nachtruhe',
+                  )));
+                },
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Text(
+                    'Zeiträume, in denen das Spiel pausiert (z.B. nachts)',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                 ),
-                contentPadding: EdgeInsets.zero,
-              );
-            }),
+                if (_protectionTimes.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text('Keine Schutzzeiten definiert.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  )
+                else
+                  Column(
+                    children: List.generate(_protectionTimes.length, (i) {
+                      final pt = _protectionTimes[i];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.fromLTRB(16, 0, 4, 0),
+                        leading: const Icon(Icons.access_time, color: Colors.grey, size: 18),
+                        title: Text('${pt.startTime} – ${pt.endTime}', style: const TextStyle(fontSize: 13)),
+                        subtitle: pt.label != null ? Text(pt.label!, style: const TextStyle(fontSize: 11)) : null,
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          onPressed: () => setState(() => _protectionTimes.removeAt(i)),
+                        ),
+                      );
+                    }),
+                  ),
+              ],
+            ),
 
             const SizedBox(height: 32),
             AppButton(
@@ -295,12 +312,14 @@ class _SettingsCard extends StatelessWidget {
   final String label;
   final Color iconColor;
   final List<Widget> children;
+  final Widget? trailing;
 
   const _SettingsCard({
     required this.icon,
     required this.label,
     required this.children,
     this.iconColor = Colors.grey,
+    this.trailing,
   });
 
   @override
@@ -318,6 +337,7 @@ class _SettingsCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
               letterSpacing: 0.5,
             )),
+            if (trailing != null) ...[const Spacer(), trailing!],
           ],
         ),
         const SizedBox(height: 8),
@@ -325,7 +345,7 @@ class _SettingsCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.cardTheme.color,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: iconColor.withOpacity(0.25)),
+            border: Border.all(color: iconColor.withValues(alpha: 0.25)),
           ),
           child: Column(children: children),
         ),
@@ -358,7 +378,7 @@ class _SettingsTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.12),
+              color: iconColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, size: 18, color: iconColor),
@@ -496,10 +516,10 @@ class _AdminTaskPoolCardState extends ConsumerState<_AdminTaskPoolCard> {
       children: [
         Row(
           children: [
-            const Icon(Icons.playlist_add_check, size: 16, color: Colors.purple),
+            const Icon(Icons.playlist_add_check, size: 16, color: Colors.grey),
             const SizedBox(width: 6),
             Text('Mein Aufgaben-Pool', style: theme.textTheme.titleSmall?.copyWith(
-              color: Colors.purple,
+              color: Colors.grey,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.5,
             )),
@@ -511,7 +531,7 @@ class _AdminTaskPoolCardState extends ConsumerState<_AdminTaskPoolCard> {
           decoration: BoxDecoration(
             color: theme.cardTheme.color,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.purple.withValues(alpha: 0.25)),
+            border: Border.all(color: Colors.grey.withValues(alpha: 0.25)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -594,30 +614,38 @@ class _ModeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: selected ? theme.colorScheme.primary : Colors.grey.withOpacity(0.3),
-            width: selected ? 2 : 1,
-          ),
-          borderRadius: BorderRadius.circular(12),
-          color: selected ? theme.colorScheme.primary.withOpacity(0.1) : null,
+    return Ink(
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: selected ? theme.colorScheme.primary : Colors.grey.withValues(alpha: 0.3),
+          width: selected ? 2 : 1,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: selected ? theme.colorScheme.primary : Colors.grey, size: 28),
-            const SizedBox(height: 8),
-            Text(title, style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: selected ? theme.colorScheme.primary : null,
-            )),
-            const SizedBox(height: 4),
-            Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-          ],
+        borderRadius: BorderRadius.circular(12),
+        color: selected
+            ? theme.colorScheme.primary.withValues(alpha: 0.1)
+            : theme.cardTheme.color,
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, color: selected ? theme.colorScheme.primary : Colors.grey, size: 28),
+                const SizedBox(height: 8),
+                Text(title, style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: selected ? theme.colorScheme.primary : null,
+                )),
+                const SizedBox(height: 4),
+                Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
+            ),
+          ),
         ),
       ),
     );

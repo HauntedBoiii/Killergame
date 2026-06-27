@@ -40,6 +40,81 @@ lib/core/services/push_notification_service.dart
 ### Sicherheit
 - API-Keys, Tokens und Secrets **niemals im Chat** – nur direkt in Config-Dateien eintragen.
 
+## Design-Konventionen & UI-Prinzipien
+
+### Farbsystem
+Nur vier semantische Farben — keine Ad-hoc-Farben wie `Colors.blue`, `Colors.teal`, `Colors.purple`, `Colors.orange` in der UI verwenden.
+
+| Farbe | Verwendung |
+|---|---|
+| **Crimson** `#B71C1C` (`theme.colorScheme.primary`) | Primäre CTAs, aktive Zustände, Akzent-Borders |
+| **Amber** `Colors.amber` | Warnung, ausstehend (Pending-States) |
+| **Green** `Colors.green` | Erfolg, Bestätigung |
+| **Grey** `Colors.grey` | Passive Icons, Labels, De-emphasis, Info-Zustände |
+
+Danger-Zonen dürfen `Colors.red` verwenden (explizite Destruktions-Aktionen). Status-Cards im Admin-Bereich dürfen dynamische `statusColor` (green/orange/red) nutzen — das ist semantisch, kein Ad-hoc-Einsatz.
+
+### Border-Radius-System
+- `12` — kleine Karten, Chips, Icon-Container, Dialog-interne Elemente
+- `16` — Standard-Cards, Einstellungskarten
+- `20` — Hero-Cards (prominent, large)
+
+Konsistenz geht vor: lieber ein Radius zu wenig variieren als zu viele.
+
+### Typografie
+- **Rajdhani** — Überschriften (`titleLarge`, `displayLarge`, `AppBar`)
+- **Inter** — Fließtext, Labels, Subtitles
+- Keine eigenen `fontFamily`-Overrides in Widgets — Theme nutzen.
+
+### Tap-Feedback (Ripple)
+Nie `GestureDetector` für tappable Cards — immer `Ink + Material(transparency) + InkWell`:
+
+```dart
+Ink(
+  decoration: BoxDecoration(...),
+  child: Material(
+    type: MaterialType.transparency,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Padding(...),
+    ),
+  ),
+)
+```
+
+`BoxShadow` mit sehr niedrigem Alpha (`0.1`) weglassen — imperceptible und erhöht Komplexität.
+
+### Shared Button-Komponente
+Immer `AppButton` (`lib/presentation/widgets/common/app_button.dart`) verwenden:
+- `outlined: true` + `color:` für sekundäre/destruktive Outlined-Buttons
+- `color:` für farbige Filled-Buttons
+- `isLoading:` für Lade-Zustände
+- `icon:` für Icon + Label
+
+Nie rohe `ElevatedButton`, `OutlinedButton` oder `TextButton.icon` in Screens verwenden.
+
+### Settings-UI-Pattern
+Für Einstellungsbereiche (create_game_screen, admin_screen) gelten zwei private Widget-Klassen:
+
+**`_SettingsCard`** — Container mit Icon+Label-Header und optionalem `trailing`-Widget (z.B. Add-Button):
+- Border: `iconColor.withValues(alpha: 0.25)`
+- Border-Radius: `16`
+- `iconColor` immer `Colors.grey` (kein semantischer Farbcode für reine UI-Struktur)
+
+**`_SettingsTile`** — Zeile innerhalb einer `_SettingsCard` mit Icon-Container, Titel/Subtitle und trailing Widget (Switch, etc.):
+- Icon-Container: `iconColor.withValues(alpha: 0.12)` Hintergrund, Radius `8`
+- Padding: `symmetric(horizontal: 16, vertical: 12)` (create_game) / `symmetric(vertical: 12)` (admin, da Container padding übernimmt)
+- `Divider(height: 1)` zwischen Tiles
+
+Diese Klassen sind file-privat (`_`) und existieren in beiden Screens — kein shared Import. Nur konsolidieren wenn ein dritter Nutzer entsteht.
+
+### Deprecated APIs vermeiden
+- Immer `.withValues(alpha: x)` statt `.withOpacity(x)`
+- Kein `DropdownButtonFormField(value:)` → `initialValue:` nutzen
+
+---
+
 ## Design-Vorschau (standalone, kein Produktionscode)
 Es gibt eine separate Vorschau-App für UI-Designs:
 ```

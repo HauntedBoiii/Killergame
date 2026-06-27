@@ -69,9 +69,9 @@ class AdminScreen extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.withOpacity(0.4)),
+                  border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
                 ),
                 child: Column(
                   children: [
@@ -194,9 +194,9 @@ class _GameStatusCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.1),
+        color: statusColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withOpacity(0.4)),
+        border: Border.all(color: statusColor.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -259,6 +259,54 @@ class _AdminPlayerTile extends StatelessWidget {
           }
         }
       },
+    );
+  }
+}
+
+// ── Settings Tile ─────────────────────────────────────────
+
+class _SettingsTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final Widget trailing;
+
+  const _SettingsTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+          ),
+          trailing,
+        ],
+      ),
     );
   }
 }
@@ -338,20 +386,21 @@ class _SettingsEditorSectionState extends ConsumerState<_SettingsEditorSection> 
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Admin-Bestätigung', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-            subtitle: const Text('Kills müssen vom Admin bestätigt werden', style: TextStyle(fontSize: 12)),
-            value: _requireAdmin,
-            onChanged: (v) => setState(() => _requireAdmin = v),
+          _SettingsTile(
+            icon: Icons.shield_outlined,
+            iconColor: Colors.grey,
+            title: 'Admin-Bestätigung',
+            subtitle: 'Kills müssen vom Admin bestätigt werden',
+            trailing: Switch(value: _requireAdmin, onChanged: (v) => setState(() => _requireAdmin = v)),
           ),
+          const Divider(height: 1),
           if (isTaskMode) ...[
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Aufgaben sind Einweg', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-              subtitle: const Text('Benutzte Aufgaben sind verbraucht', style: TextStyle(fontSize: 12)),
-              value: _tasksAreSingleUse,
-              onChanged: (v) => setState(() => _tasksAreSingleUse = v),
+            _SettingsTile(
+              icon: Icons.electric_bolt_outlined,
+              iconColor: Colors.grey,
+              title: 'Aufgaben sind Einweg',
+              subtitle: 'Benutzte Aufgaben sind verbraucht',
+              trailing: Switch(value: _tasksAreSingleUse, onChanged: (v) => setState(() => _tasksAreSingleUse = v)),
             ),
             const SizedBox(height: 4),
             const Text('Aufgaben pro Spieler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
@@ -440,7 +489,7 @@ class _SettingsEditorSectionState extends ConsumerState<_SettingsEditorSection> 
             final pt = _protectionTimes[i];
             return ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.access_time, color: Colors.blue, size: 18),
+              leading: const Icon(Icons.access_time, color: Colors.grey, size: 18),
               title: Text('${pt.startTime} – ${pt.endTime}', style: const TextStyle(fontSize: 13)),
               subtitle: pt.label != null ? Text(pt.label!, style: const TextStyle(fontSize: 11)) : null,
               trailing: IconButton(
@@ -766,9 +815,9 @@ class _SwapAssignmentsSectionState extends ConsumerState<_SwapAssignmentsSection
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.08),
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.withOpacity(0.35)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -778,7 +827,7 @@ class _SwapAssignmentsSectionState extends ConsumerState<_SwapAssignmentsSection
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
