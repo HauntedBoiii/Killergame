@@ -7,8 +7,10 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:moerderspiel/core/models/loot_item.dart';
 import 'package:moerderspiel/data/models/kniffel_game.dart';
+import 'package:moerderspiel/presentation/providers/auth_provider.dart';
 import 'package:moerderspiel/presentation/providers/kniffel_provider.dart';
 import 'package:moerderspiel/presentation/providers/lootbox_provider.dart';
+import 'package:moerderspiel/presentation/widgets/common/app_button.dart';
 import 'package:moerderspiel/presentation/widgets/kniffel/dice_widget.dart';
 import 'package:moerderspiel/presentation/widgets/kniffel/kniffel_tile_scorecard.dart';
 import 'package:moerderspiel/presentation/widgets/kniffel/scorecard_widget.dart';
@@ -132,13 +134,38 @@ class _KniffelScreenState extends ConsumerState<KniffelScreen> {
     });
 
     final gameAsync = ref.watch(kniffelGameProvider);
+    final isBonus = gameAsync.value?.isBonus ?? false;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'KNIFFEL',
-          style:
-              GoogleFonts.rajdhani(letterSpacing: 4, fontWeight: FontWeight.w900),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'KNIFFEL',
+              style: GoogleFonts.rajdhani(letterSpacing: 4, fontWeight: FontWeight.w900),
+            ),
+            if (isBonus) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
+                ),
+                child: Text(
+                  'BONUS',
+                  style: GoogleFonts.rajdhani(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.amber.shade700,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           IconButton(
@@ -572,7 +599,9 @@ class _CompletedView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final rankAsync = ref.watch(todayKniffelRankProvider);
+    final rankAsync    = ref.watch(todayKniffelRankProvider);
+    final profile      = ref.watch(profileProvider).value;
+    final bonusAvail   = (profile?.rpsBonusAvailable ?? false) && !game.isBonus;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final score = game.finalScore ?? game.runningTotal;
@@ -701,6 +730,17 @@ class _CompletedView extends ConsumerWidget {
               ),
             ),
           ).animate().fadeIn(delay: 200.ms),
+
+          if (bonusAvail) ...[
+            const SizedBox(height: 10),
+            AppButton(
+              label: 'BONUS-RUNDE SPIELEN',
+              icon: Icons.sports_mma,
+              color: Colors.amber.shade700,
+              onPressed: () =>
+                  ref.read(kniffelGameProvider.notifier).startOrResumeBonus(),
+            ).animate().fadeIn(delay: 250.ms),
+          ],
 
           if (game.userId == '461045f1-83b6-44a1-bd5e-1d3214533d8d') ...[
             const SizedBox(height: 10),

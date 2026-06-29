@@ -11,10 +11,11 @@ CREATE TABLE public.profiles (
   id           uuid NOT NULL,
   username     text NOT NULL UNIQUE,
   avatar_url   text,
-  total_kills  integer DEFAULT 0,
-  total_games  integer DEFAULT 0,
-  total_wins   integer DEFAULT 0,
-  created_at   timestamp with time zone DEFAULT now(),
+  total_kills          integer DEFAULT 0,
+  total_games          integer DEFAULT 0,
+  total_wins           integer DEFAULT 0,
+  rps_bonus_available  boolean NOT NULL DEFAULT false,
+  created_at           timestamp with time zone DEFAULT now(),
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
@@ -941,11 +942,13 @@ CREATE TABLE public.kniffel_games (
   scorecard             jsonb       NOT NULL DEFAULT '{}',
   crown_bonus_available boolean     NOT NULL DEFAULT false,
   crown_bonus_used      boolean     NOT NULL DEFAULT false,
+  is_bonus              boolean     NOT NULL DEFAULT false,
   submitted_at timestamp with time zone,
   created_at   timestamp with time zone NOT NULL DEFAULT now(),
   updated_at   timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT kniffel_games_pkey   PRIMARY KEY (id),
-  CONSTRAINT kniffel_games_unique UNIQUE (user_id, game_date),
+  -- 021: is_bonus erlaubt Normal- + Bonus-Spiel am selben Tag
+  CONSTRAINT kniffel_games_user_id_game_date_is_bonus_key UNIQUE (user_id, game_date, is_bonus),
   CONSTRAINT kniffel_games_user_fkey FOREIGN KEY (user_id)
              REFERENCES auth.users(id) ON DELETE CASCADE
 );
@@ -1042,15 +1045,21 @@ END;
 $$;
 
 -- ── Start or resume today's game (idempotent) ──────────────────
--- Tester kann täglich neu starten (017: auth-Guard + ON CONFLICT race-fix).
+-- 017: auth-Guard + ON CONFLICT race-fix.
+-- 021: p_is_bonus param → Bonus-Spiel nach RPS-Turniersieg.
 
-CREATE OR REPLACE FUNCTION public.kniffel_start_or_resume()
+DROP FUNCTION IF EXISTS public.kniffel_start_or_resume();
+
+CREATE OR REPLACE FUNCTION public.kniffel_start_or_resume(
+  p_is_bonus boolean DEFAULT false
+)
 RETURNS public.kniffel_games LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public AS $$
 DECLARE
-  v_today     date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
-  v_game      public.kniffel_games;
-  v_is_tester boolean;
+  v_today       date    := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
+  v_game        public.kniffel_games;
+  v_is_tester   boolean;
+  v_bonus_avail boolean;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
@@ -1060,37 +1069,55 @@ BEGIN
 
   v_is_tester := auth.uid() = public._tester_uuid();
 
-  -- Tester darf täglich neu starten: abgeschlossenes Spiel löschen
-  IF v_is_tester THEN
-    DELETE FROM public.kniffel_games
-    WHERE user_id  = auth.uid()
-      AND game_date = v_today
-      AND status   = 'completed';
-  END IF;
+  IF p_is_bonus THEN
+    SELECT rps_bonus_available INTO v_bonus_avail
+    FROM public.profiles WHERE id = auth.uid();
+    IF NOT v_bonus_avail THEN RAISE EXCEPTION 'No RPS bonus available'; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM public.kniffel_games
+      WHERE user_id = auth.uid() AND game_date = v_today
+        AND is_bonus = false AND status = 'completed'
+    ) THEN RAISE EXCEPTION 'Complete normal game first'; END IF;
 
-  SELECT * INTO v_game
-  FROM public.kniffel_games
-  WHERE user_id = auth.uid() AND game_date = v_today;
+    UPDATE public.profiles SET rps_bonus_available = false WHERE id = auth.uid();
 
-  IF NOT FOUND THEN
-    -- ON CONFLICT DO NOTHING fängt parallele Requests desselben Users ab
-    INSERT INTO public.kniffel_games (user_id, game_date)
-    VALUES (auth.uid(), v_today)
-    ON CONFLICT (user_id, game_date) DO NOTHING
-    RETURNING * INTO v_game;
-
-    -- Falls INSERT keinen Row zurückgegeben hat (Concurrent-Session gewann)
+    SELECT * INTO v_game FROM public.kniffel_games
+    WHERE user_id = auth.uid() AND game_date = v_today AND is_bonus = true;
     IF NOT FOUND THEN
-      SELECT * INTO v_game
-      FROM public.kniffel_games
-      WHERE user_id = auth.uid() AND game_date = v_today;
+      INSERT INTO public.kniffel_games (user_id, game_date, is_bonus)
+      VALUES (auth.uid(), v_today, true)
+      ON CONFLICT (user_id, game_date, is_bonus) DO NOTHING
+      RETURNING * INTO v_game;
+      IF NOT FOUND THEN
+        SELECT * INTO v_game FROM public.kniffel_games
+        WHERE user_id = auth.uid() AND game_date = v_today AND is_bonus = true;
+      END IF;
+    END IF;
+  ELSE
+    IF v_is_tester THEN
+      DELETE FROM public.kniffel_games
+      WHERE user_id = auth.uid() AND game_date = v_today
+        AND is_bonus = false AND status = 'completed';
+    END IF;
+
+    SELECT * INTO v_game FROM public.kniffel_games
+    WHERE user_id = auth.uid() AND game_date = v_today AND is_bonus = false;
+    IF NOT FOUND THEN
+      INSERT INTO public.kniffel_games (user_id, game_date, is_bonus)
+      VALUES (auth.uid(), v_today, false)
+      ON CONFLICT (user_id, game_date, is_bonus) DO NOTHING
+      RETURNING * INTO v_game;
+      IF NOT FOUND THEN
+        SELECT * INTO v_game FROM public.kniffel_games
+        WHERE user_id = auth.uid() AND game_date = v_today AND is_bonus = false;
+      END IF;
     END IF;
   END IF;
 
   RETURN v_game;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION public.kniffel_start_or_resume TO authenticated;
+GRANT EXECUTE ON FUNCTION public.kniffel_start_or_resume(boolean) TO authenticated;
 
 -- ── Roll dice (server-side randomness = tamper-proof) ──────────
 -- Supports crown bonus 4th roll (Migration 015).
@@ -1316,6 +1343,7 @@ GRANT EXECUTE ON FUNCTION public.kniffel_select_category TO authenticated;
 
 DROP FUNCTION IF EXISTS public.kniffel_daily_leaderboard(uuid);
 
+-- 021: DISTINCT ON (user_id) zeigt nur den besten Score pro Spieler (Normal/Bonus).
 CREATE OR REPLACE FUNCTION public.kniffel_daily_leaderboard(
   p_game_id uuid DEFAULT NULL
 ) RETURNS TABLE(
@@ -1332,29 +1360,33 @@ DECLARE
   v_today date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
 BEGIN
   RETURN QUERY
+  WITH best_per_user AS (
+    SELECT DISTINCT ON (kg.user_id)
+      kg.id, kg.user_id, kg.final_score, kg.submitted_at
+    FROM public.kniffel_games kg
+    WHERE kg.game_date = v_today
+      AND kg.status    = 'completed'
+      AND kg.user_id  != public._tester_uuid()
+      AND (
+        p_game_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.game_players gp
+          WHERE gp.game_id = p_game_id AND gp.player_id = kg.user_id
+        )
+      )
+    ORDER BY kg.user_id, kg.final_score DESC
+  )
   SELECT
-    kg.id           AS game_id,
-    kg.user_id,
+    b.id              AS game_id,
+    b.user_id,
     p.username::text,
     p.avatar_url::text,
-    kg.final_score,
-    kg.submitted_at,
-    -- DENSE_RANK: kein Rang-Lücke bei Gleichstand (1,2,2,3 statt 1,2,2,4)
-    -- Berechnet nach Tester-Filter → Tester beeinflusst keine Platzierung
-    DENSE_RANK() OVER (ORDER BY kg.final_score DESC)::bigint
-  FROM public.kniffel_games kg
-  JOIN public.profiles p ON p.id = kg.user_id
-  WHERE kg.game_date = v_today
-    AND kg.status    = 'completed'
-    AND kg.user_id  != public._tester_uuid()
-    AND (
-      p_game_id IS NULL
-      OR EXISTS (
-        SELECT 1 FROM public.game_players gp
-        WHERE gp.game_id = p_game_id AND gp.player_id = kg.user_id
-      )
-    )
-  ORDER BY kg.final_score DESC;
+    b.final_score,
+    b.submitted_at,
+    DENSE_RANK() OVER (ORDER BY b.final_score DESC)::bigint
+  FROM best_per_user b
+  JOIN public.profiles p ON p.id = b.user_id
+  ORDER BY b.final_score DESC;
 END;
 $$;
 GRANT EXECUTE ON FUNCTION public.kniffel_daily_leaderboard TO authenticated;
@@ -1383,9 +1415,10 @@ SET search_path = public AS $$
 BEGIN
   RETURN QUERY
   WITH
-  -- Alle abgeschlossenen Spiele: kein Tester, optional nach game_id gefiltert.
+  -- 021: MAX(final_score) GROUP BY (user_id, game_date) → Bonus zählt nur
+  --      wenn besser als Normal-Spiel; nie doppelt summiert.
   filtered_games AS (
-    SELECT kg.user_id, kg.game_date, kg.final_score
+    SELECT kg.user_id, kg.game_date, MAX(kg.final_score) AS final_score
     FROM public.kniffel_games kg
     WHERE kg.status  = 'completed'
       AND kg.user_id != public._tester_uuid()
@@ -1396,6 +1429,7 @@ BEGIN
           WHERE gp.game_id = p_game_id AND gp.player_id = kg.user_id
         )
       )
+    GROUP BY kg.user_id, kg.game_date
   ),
   -- Tage mit > 1 Teilnehmer: Voraussetzung für eindeutigen Tagesverlierer
   multi_player_days AS (
@@ -1914,3 +1948,381 @@ BEGIN
   END LOOP;
 END;
 $$;
+
+-- ══════════════════════════════════════════════════════════════
+-- RPS TOURNAMENT SYSTEM (Migration 021)
+-- ══════════════════════════════════════════════════════════════
+
+-- ── rps_tournaments ───────────────────────────────────────────
+
+-- Globales Turnier — kein game_id, ein Turnier pro Tag über alle aktiven Spiele.
+CREATE TABLE public.rps_tournaments (
+  id         uuid NOT NULL DEFAULT gen_random_uuid(),
+  created_by uuid NOT NULL,
+  status     text NOT NULL DEFAULT 'in_progress'
+             CHECK (status IN ('in_progress', 'completed')),
+  winner_id  uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT rps_tournaments_pkey PRIMARY KEY (id),
+  CONSTRAINT rps_tournaments_creator_fkey
+    FOREIGN KEY (created_by) REFERENCES auth.users(id),
+  CONSTRAINT rps_tournaments_winner_fkey
+    FOREIGN KEY (winner_id) REFERENCES auth.users(id)
+);
+
+-- Nur ein globales Turnier pro Tag (UTC)
+CREATE UNIQUE INDEX rps_tournaments_date_idx
+  ON public.rps_tournaments (CAST(created_at AT TIME ZONE 'UTC' AS date));
+
+GRANT SELECT ON public.rps_tournaments TO authenticated;
+GRANT SELECT ON public.rps_matches TO authenticated;
+
+ALTER TABLE public.rps_tournaments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "rps_tournaments_select" ON public.rps_tournaments
+  FOR SELECT TO authenticated USING (true);
+
+-- ── rps_matches ───────────────────────────────────────────────
+
+CREATE TABLE public.rps_matches (
+  id            uuid    NOT NULL DEFAULT gen_random_uuid(),
+  tournament_id uuid    NOT NULL,
+  round         integer NOT NULL,
+  match_slot    integer NOT NULL,
+  player_a_id   uuid    NOT NULL,
+  player_b_id   uuid,
+  choice_a      text    CHECK (choice_a IN ('rock', 'paper', 'scissors')),
+  choice_b      text    CHECK (choice_b IN ('rock', 'paper', 'scissors')),
+  winner_id     uuid,
+  is_bye        boolean NOT NULL DEFAULT false,
+  deadline      timestamp with time zone,
+  created_at    timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT rps_matches_pkey PRIMARY KEY (id),
+  CONSTRAINT rps_matches_tournament_fkey
+    FOREIGN KEY (tournament_id) REFERENCES public.rps_tournaments(id) ON DELETE CASCADE,
+  CONSTRAINT rps_matches_player_a_fkey FOREIGN KEY (player_a_id) REFERENCES auth.users(id),
+  CONSTRAINT rps_matches_player_b_fkey FOREIGN KEY (player_b_id) REFERENCES auth.users(id),
+  CONSTRAINT rps_matches_winner_fkey   FOREIGN KEY (winner_id)   REFERENCES auth.users(id)
+);
+
+ALTER TABLE public.rps_matches ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "rps_matches_select" ON public.rps_matches
+  FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "rps_matches_update" ON public.rps_matches
+  FOR UPDATE TO authenticated
+  USING (auth.uid() IN (player_a_id, player_b_id));
+
+-- ── _rps_send_push ────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public._rps_send_push(
+  p_user_id uuid, p_event text, p_payload jsonb DEFAULT '{}'::jsonb
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+BEGIN
+  BEGIN
+    PERFORM net.http_post(
+      url     := 'https://<project-ref>.supabase.co/functions/v1/send-push',
+      headers := jsonb_build_object(
+                   'Content-Type',  'application/json',
+                   'Authorization', 'Bearer <service_role_key>'
+                 ),
+      body    := jsonb_build_object(
+                   'type', 'rps', 'event', p_event,
+                   'user_id', p_user_id, 'payload', p_payload
+                 )
+    );
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
+END;
+$$;
+
+-- ── _rps_advance_bracket ──────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public._rps_advance_bracket(p_tournament_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_current_round integer;
+  v_pending_count integer;
+  v_winners       uuid[];
+  v_winner_count  integer;
+  v_i             integer;
+  v_new_match_id  uuid;
+  v_deadline      timestamptz;
+BEGIN
+  SELECT MAX(round) INTO v_current_round
+  FROM public.rps_matches WHERE tournament_id = p_tournament_id;
+
+  SELECT COUNT(*) INTO v_pending_count
+  FROM public.rps_matches
+  WHERE tournament_id = p_tournament_id
+    AND round = v_current_round AND winner_id IS NULL;
+
+  IF v_pending_count > 0 THEN RETURN; END IF;
+
+  SELECT array_agg(winner_id ORDER BY match_slot) INTO v_winners
+  FROM public.rps_matches
+  WHERE tournament_id = p_tournament_id AND round = v_current_round;
+
+  v_winner_count := array_length(v_winners, 1);
+  v_deadline := CASE WHEN EXTRACT(HOUR FROM NOW() AT TIME ZONE 'UTC') >= 12
+                     THEN NOW() + interval '2 hours' ELSE NULL END;
+
+  IF v_winner_count = 1 THEN
+    UPDATE public.rps_tournaments
+    SET status = 'completed', winner_id = v_winners[1]
+    WHERE id = p_tournament_id;
+    UPDATE public.profiles SET rps_bonus_available = true WHERE id = v_winners[1];
+    INSERT INTO public.user_credits (user_id, bronze_credits)
+    VALUES (v_winners[1], 1)
+    ON CONFLICT (user_id) DO UPDATE
+      SET bronze_credits = public.user_credits.bronze_credits + 1;
+    PERFORM public._rps_send_push(
+      v_winners[1], 'tournament_won',
+      jsonb_build_object('tournament_id', p_tournament_id)
+    );
+    RETURN;
+  END IF;
+
+  FOR v_i IN 1..CEIL(v_winner_count::numeric / 2)::integer LOOP
+    INSERT INTO public.rps_matches (
+      tournament_id, round, match_slot,
+      player_a_id, player_b_id, winner_id, is_bye, deadline
+    ) VALUES (
+      p_tournament_id, v_current_round + 1, v_i - 1,
+      v_winners[(v_i - 1) * 2 + 1],
+      CASE WHEN v_winner_count > (v_i - 1) * 2 + 1 THEN v_winners[(v_i - 1) * 2 + 2] ELSE NULL END,
+      CASE WHEN v_winner_count <= (v_i - 1) * 2 + 1 THEN v_winners[(v_i - 1) * 2 + 1] ELSE NULL END,
+      v_winner_count <= (v_i - 1) * 2 + 1,
+      CASE WHEN v_winner_count <= (v_i - 1) * 2 + 1 THEN NULL ELSE v_deadline END
+    ) RETURNING id INTO v_new_match_id;
+
+    IF v_winner_count > (v_i - 1) * 2 + 1 THEN
+      PERFORM public._rps_send_push(v_winners[(v_i - 1) * 2 + 1], 'match_started',
+        jsonb_build_object('match_id', v_new_match_id, 'tournament_id', p_tournament_id));
+      PERFORM public._rps_send_push(v_winners[(v_i - 1) * 2 + 2], 'match_started',
+        jsonb_build_object('match_id', v_new_match_id, 'tournament_id', p_tournament_id));
+    END IF;
+  END LOOP;
+END;
+$$;
+
+-- ── rps_start_tournament ──────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.rps_start_tournament()
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_today      date := (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
+  v_tournament uuid;
+  v_player_cnt integer;
+  v_deadline   timestamptz;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+
+  SELECT id INTO v_tournament FROM public.rps_tournaments
+  WHERE (created_at AT TIME ZONE 'UTC')::date = v_today;
+  IF FOUND THEN RETURN v_tournament; END IF;
+
+  SELECT COUNT(DISTINCT gp.player_id) INTO v_player_cnt
+  FROM public.game_players gp
+  JOIN public.games g ON g.id = gp.game_id
+  WHERE g.status = 'active'
+    AND gp.player_id != public._tester_uuid();
+  IF v_player_cnt < 2 THEN RAISE EXCEPTION 'At least 2 players required'; END IF;
+
+  INSERT INTO public.rps_tournaments (created_by)
+  VALUES (auth.uid())
+  RETURNING id INTO v_tournament;
+
+  v_deadline := CASE WHEN EXTRACT(HOUR FROM NOW() AT TIME ZONE 'UTC') >= 12
+                     THEN NOW() + interval '2 hours' ELSE NULL END;
+
+  WITH shuffled AS (
+    SELECT DISTINCT ON (gp.player_id) gp.player_id,
+           (ROW_NUMBER() OVER (ORDER BY random())) - 1 AS idx
+    FROM public.game_players gp
+    JOIN public.games g ON g.id = gp.game_id
+    WHERE g.status = 'active'
+      AND gp.player_id != public._tester_uuid()
+  )
+  INSERT INTO public.rps_matches
+    (tournament_id, round, match_slot, player_a_id, player_b_id, winner_id, is_bye, deadline)
+  SELECT
+    v_tournament, 1, a.idx / 2,
+    a.player_id, b.player_id,
+    CASE WHEN b.player_id IS NULL THEN a.player_id ELSE NULL END,
+    b.player_id IS NULL,
+    CASE WHEN b.player_id IS NULL THEN NULL ELSE v_deadline END
+  FROM shuffled a
+  LEFT JOIN shuffled b ON b.idx = a.idx + 1
+  WHERE a.idx % 2 = 0;
+
+  PERFORM public._rps_advance_bracket(v_tournament);
+  RETURN v_tournament;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.rps_start_tournament() TO authenticated;
+
+-- ── rps_submit_choice ─────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.rps_submit_choice(
+  p_match_id uuid, p_choice text
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_match    public.rps_matches;
+  v_opponent uuid;
+  v_winner   uuid;
+  v_loser    uuid;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  IF p_choice NOT IN ('rock', 'paper', 'scissors') THEN
+    RAISE EXCEPTION 'Invalid choice: %', p_choice;
+  END IF;
+
+  SELECT * INTO v_match
+  FROM public.rps_matches
+  WHERE id = p_match_id
+    AND (player_a_id = auth.uid() OR player_b_id = auth.uid())
+    AND winner_id IS NULL AND NOT is_bye
+  FOR UPDATE;
+
+  IF NOT FOUND THEN RAISE EXCEPTION 'Match not found or already decided'; END IF;
+
+  IF v_match.player_a_id = auth.uid() THEN
+    UPDATE public.rps_matches SET choice_a = p_choice
+    WHERE id = p_match_id RETURNING * INTO v_match;
+    v_opponent := v_match.player_b_id;
+  ELSE
+    UPDATE public.rps_matches SET choice_b = p_choice
+    WHERE id = p_match_id RETURNING * INTO v_match;
+    v_opponent := v_match.player_a_id;
+  END IF;
+
+  -- Gegner benachrichtigen wenn er noch nicht gewählt hat
+  IF v_opponent IS NOT NULL THEN
+    IF (v_match.player_a_id = auth.uid() AND v_match.choice_b IS NULL)
+    OR (v_match.player_b_id = auth.uid() AND v_match.choice_a IS NULL) THEN
+      PERFORM public._rps_send_push(v_opponent, 'opponent_chose',
+        jsonb_build_object('match_id', p_match_id, 'tournament_id', v_match.tournament_id));
+    END IF;
+  END IF;
+
+  IF v_match.choice_a IS NOT NULL AND v_match.choice_b IS NOT NULL THEN
+    IF v_match.choice_a = v_match.choice_b THEN
+      UPDATE public.rps_matches
+      SET choice_a = NULL, choice_b = NULL,
+          deadline = CASE WHEN EXTRACT(HOUR FROM NOW() AT TIME ZONE 'UTC') >= 12
+                          THEN NOW() + interval '2 hours' ELSE NULL END
+      WHERE id = p_match_id;
+      PERFORM public._rps_send_push(v_match.player_a_id, 'match_draw',
+        jsonb_build_object('match_id', p_match_id, 'tournament_id', v_match.tournament_id));
+      PERFORM public._rps_send_push(v_match.player_b_id, 'match_draw',
+        jsonb_build_object('match_id', p_match_id, 'tournament_id', v_match.tournament_id));
+    ELSE
+      v_winner := CASE
+        WHEN (v_match.choice_a = 'rock'     AND v_match.choice_b = 'scissors')
+          OR (v_match.choice_a = 'scissors' AND v_match.choice_b = 'paper')
+          OR (v_match.choice_a = 'paper'    AND v_match.choice_b = 'rock')
+        THEN v_match.player_a_id ELSE v_match.player_b_id END;
+      v_loser := CASE WHEN v_winner = v_match.player_a_id
+                      THEN v_match.player_b_id ELSE v_match.player_a_id END;
+      UPDATE public.rps_matches SET winner_id = v_winner WHERE id = p_match_id;
+      PERFORM public._rps_send_push(v_winner, 'match_won',
+        jsonb_build_object('match_id', p_match_id, 'tournament_id', v_match.tournament_id));
+      PERFORM public._rps_send_push(v_loser, 'match_lost',
+        jsonb_build_object('match_id', p_match_id, 'tournament_id', v_match.tournament_id));
+      PERFORM public._rps_advance_bracket(v_match.tournament_id);
+    END IF;
+  END IF;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.rps_submit_choice(uuid, text) TO authenticated;
+
+-- ── rps_process_timeouts ──────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.rps_process_timeouts()
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public AS $$
+DECLARE
+  v_match    public.rps_matches;
+  v_winner   uuid;
+  v_loser    uuid;
+BEGIN
+  -- Matches ohne deadline nach 12 UTC aktivieren
+  IF EXTRACT(HOUR FROM NOW() AT TIME ZONE 'UTC') >= 12 THEN
+    UPDATE public.rps_matches
+    SET deadline = NOW() + interval '2 hours'
+    WHERE deadline IS NULL AND winner_id IS NULL AND NOT is_bye
+      AND EXISTS (
+        SELECT 1 FROM public.rps_tournaments t
+        WHERE t.id = tournament_id AND t.status = 'in_progress'
+      );
+  END IF;
+
+  -- Abgelaufene Matches abarbeiten
+  FOR v_match IN
+    SELECT * FROM public.rps_matches
+    WHERE deadline < NOW() AND winner_id IS NULL AND NOT is_bye
+    FOR UPDATE SKIP LOCKED
+  LOOP
+    v_winner := CASE
+      WHEN v_match.choice_a IS NOT NULL AND v_match.choice_b IS NULL THEN v_match.player_a_id
+      WHEN v_match.choice_b IS NOT NULL AND v_match.choice_a IS NULL THEN v_match.player_b_id
+      ELSE CASE WHEN random() < 0.5 THEN v_match.player_a_id ELSE v_match.player_b_id END
+    END;
+    v_loser := CASE WHEN v_winner = v_match.player_a_id
+                    THEN v_match.player_b_id ELSE v_match.player_a_id END;
+
+    UPDATE public.rps_matches SET winner_id = v_winner WHERE id = v_match.id;
+    PERFORM public._rps_send_push(v_winner, 'match_won',
+      jsonb_build_object('match_id', v_match.id, 'timeout', true, 'tournament_id', v_match.tournament_id));
+    PERFORM public._rps_send_push(v_loser, 'match_lost',
+      jsonb_build_object('match_id', v_match.id, 'timeout', true, 'tournament_id', v_match.tournament_id));
+    PERFORM public._rps_advance_bracket(v_match.tournament_id);
+  END LOOP;
+
+  -- 1-Stunden-Warnung (55–65 min vor Deadline)
+  FOR v_match IN
+    SELECT * FROM public.rps_matches
+    WHERE deadline BETWEEN NOW() + interval '55 minutes' AND NOW() + interval '65 minutes'
+      AND winner_id IS NULL AND NOT is_bye
+  LOOP
+    IF v_match.choice_a IS NULL THEN
+      PERFORM public._rps_send_push(v_match.player_a_id, 'match_warning_1h',
+        jsonb_build_object('match_id', v_match.id, 'tournament_id', v_match.tournament_id));
+    END IF;
+    IF v_match.choice_b IS NULL AND v_match.player_b_id IS NOT NULL THEN
+      PERFORM public._rps_send_push(v_match.player_b_id, 'match_warning_1h',
+        jsonb_build_object('match_id', v_match.id, 'tournament_id', v_match.tournament_id));
+    END IF;
+  END LOOP;
+
+  -- 15-Minuten-Warnung (10–20 min vor Deadline)
+  FOR v_match IN
+    SELECT * FROM public.rps_matches
+    WHERE deadline BETWEEN NOW() + interval '10 minutes' AND NOW() + interval '20 minutes'
+      AND winner_id IS NULL AND NOT is_bye
+  LOOP
+    IF v_match.choice_a IS NULL THEN
+      PERFORM public._rps_send_push(v_match.player_a_id, 'match_warning_15m',
+        jsonb_build_object('match_id', v_match.id, 'tournament_id', v_match.tournament_id));
+    END IF;
+    IF v_match.choice_b IS NULL AND v_match.player_b_id IS NOT NULL THEN
+      PERFORM public._rps_send_push(v_match.player_b_id, 'match_warning_15m',
+        jsonb_build_object('match_id', v_match.id, 'tournament_id', v_match.tournament_id));
+    END IF;
+  END LOOP;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.rps_process_timeouts TO authenticated;
+
+SELECT cron.schedule(
+  'rps-process-timeouts',
+  '*/5 * * * *',
+  $$SELECT public.rps_process_timeouts();$$
+);

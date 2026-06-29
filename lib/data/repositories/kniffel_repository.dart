@@ -9,20 +9,37 @@ class KniffelRepository {
       DateTime.now().toUtc().toIso8601String().split('T').first;
 
   Future<KniffelGame> startOrResume() async {
-    final data = await _client.rpc('kniffel_start_or_resume');
+    final data = await _client.rpc('kniffel_start_or_resume', params: {'p_is_bonus': false});
+    return KniffelGame.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<KniffelGame> startOrResumeBonus() async {
+    final data = await _client.rpc('kniffel_start_or_resume', params: {'p_is_bonus': true});
     return KniffelGame.fromJson(data as Map<String, dynamic>);
   }
 
   Future<KniffelGame?> getTodayGame() async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return null;
-    final data = await _client
+    // Prefer in-progress bonus game so players can continue it after navigating away
+    final bonus = await _client
         .from('kniffel_games')
         .select()
         .eq('user_id', userId)
         .eq('game_date', _today)
+        .eq('is_bonus', true)
+        .eq('status', 'in_progress')
         .maybeSingle();
-    return data == null ? null : KniffelGame.fromJson(data);
+    if (bonus != null) return KniffelGame.fromJson(bonus);
+
+    final normal = await _client
+        .from('kniffel_games')
+        .select()
+        .eq('user_id', userId)
+        .eq('game_date', _today)
+        .eq('is_bonus', false)
+        .maybeSingle();
+    return normal == null ? null : KniffelGame.fromJson(normal);
   }
 
   Future<KniffelGame> roll(String gameId, List<bool> held) async {
@@ -87,15 +104,23 @@ class KniffelRepository {
     return KniffelGame.fromJson(data);
   }
 
-  /// Returns how many completed games today have a strictly higher score.
-  /// rank = result + 1.
+  /// Returns rank of myScore in today's leaderboard (counting distinct users
+  /// whose BEST score today strictly exceeds myScore).
   Future<int?> getTodayRank(int myScore) async {
     final data = await _client
         .from('kniffel_games')
-        .select('id')
+        .select('user_id, final_score')
         .eq('game_date', _today)
-        .eq('status', 'completed')
-        .gt('final_score', myScore);
-    return (data as List).length + 1;
+        .eq('status', 'completed');
+    final rows = data as List;
+    // Group by user_id, take max score, count how many beat myScore
+    final Map<String, int> bestPerUser = {};
+    for (final row in rows) {
+      final uid = row['user_id'] as String;
+      final score = (row['final_score'] as num).toInt();
+      if ((bestPerUser[uid] ?? 0) < score) bestPerUser[uid] = score;
+    }
+    final ahead = bestPerUser.values.where((s) => s > myScore).length;
+    return ahead + 1;
   }
 }

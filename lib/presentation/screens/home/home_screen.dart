@@ -9,6 +9,7 @@ import 'package:moerderspiel/data/models/game.dart';
 import 'package:moerderspiel/presentation/providers/auth_provider.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
 import 'package:moerderspiel/presentation/providers/kniffel_provider.dart';
+import 'package:moerderspiel/presentation/providers/rps_tournament_provider.dart';
 import 'package:moerderspiel/presentation/providers/theme_provider.dart';
 import 'package:moerderspiel/core/models/loot_item.dart';
 import 'package:moerderspiel/presentation/providers/lootbox_provider.dart';
@@ -191,7 +192,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const _DailyKniffelCard()
                 .animate(key: const ValueKey('home_kniffel'))
                 .fadeIn(delay: 100.ms),
-            const SizedBox(height: 20),
+            const SizedBox(height: 8),
+            const _DailyRpsCard()
+                .animate(key: const ValueKey('home_rps'))
+                .fadeIn(delay: 150.ms),
+            const SizedBox(height: 12),
 
             // Active games
             activeGames.when(
@@ -659,6 +664,108 @@ class _DailyKniffelCard extends ConsumerWidget {
     ),
   ),
 );
+  }
+}
+
+// ── Daily RPS Tournament Card ──────────────────────────────
+
+class _DailyRpsCard extends ConsumerWidget {
+  const _DailyRpsCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tAsync  = ref.watch(rpsTournamentNotifierProvider);
+    final theme   = Theme.of(context);
+    final isDark  = theme.brightness == Brightness.dark;
+
+    final tournament  = tAsync.value;
+    final isCompleted = tournament?.isCompleted == true;
+    final isRunning   = tournament != null && !isCompleted;
+
+    final borderColor = isCompleted
+        ? Colors.green.withValues(alpha: 0.5)
+        : isRunning
+            ? Colors.amber.withValues(alpha: 0.5)
+            : (isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.08));
+
+    final iconColor = isCompleted
+        ? Colors.green
+        : isRunning
+            ? Colors.amber.shade600
+            : (isDark ? Colors.white38 : Colors.black26);
+
+    return Ink(
+      decoration: BoxDecoration(
+        color: theme.cardTheme.color,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1.5),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => context.push('/rps-tournament'),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.sports_mma, size: 24, color: iconColor),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'RPS-TURNIER',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.45)
+                              : Colors.black.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      if (tAsync.isLoading)
+                        const Text('Lädt...', style: TextStyle(fontSize: 14))
+                      else if (isCompleted)
+                        const Text('Abgeschlossen',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700))
+                      else if (isRunning)
+                        Text(
+                          'Runde ${tournament.totalRounds} läuft',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                        )
+                      else
+                        const Text('Noch nicht gestartet',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                Icon(
+                  isCompleted ? Icons.emoji_events_outlined : Icons.arrow_forward_ios,
+                  size: isCompleted ? 20 : 14,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : Colors.black.withValues(alpha: 0.2),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

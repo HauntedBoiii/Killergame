@@ -100,6 +100,40 @@ Deno.serve(async (req) => {
     body = "Neuer Tag, neues Glück – wer wird heute Würfelgottheit?";
     url = "/kniffel";
 
+  } else if (type === "rps") {
+    const { event, user_id, payload: rpsPayload } = payload;
+    userIds = [user_id];
+    url = "/rps-tournament";
+
+    if (event === "match_started") {
+      title = "✊ Dein nächstes Match!";
+      body = "Du hast einen neuen Gegner im RPS-Turnier. Wähle deine Waffe!";
+    } else if (event === "opponent_chose") {
+      title = "⏳ Gegner hat gewählt!";
+      body = "Dein Gegner hat seine Wahl getroffen — jetzt bist du dran!";
+    } else if (event === "match_draw") {
+      title = "🤝 Unentschieden!";
+      body = "Gleichstand! Das Match geht in die Verlängerung.";
+    } else if (event === "match_won") {
+      title = rpsPayload?.timeout ? "⏱️ Gegner ausgeschieden!" : "✅ Runde gewonnen!";
+      body = rpsPayload?.timeout ? "Dein Gegner hat die Zeit überschritten — du kommst weiter!" : "Du hast das Match gewonnen und kommst eine Runde weiter!";
+    } else if (event === "match_lost") {
+      title = rpsPayload?.timeout ? "⏱️ Zeit abgelaufen!" : "❌ Runde verloren!";
+      body = rpsPayload?.timeout ? "Du hast die Zeit überschritten und bist ausgeschieden." : "Du hast verloren und bist aus dem Turnier ausgeschieden.";
+    } else if (event === "tournament_won") {
+      title = "🏆 Turniersieger!";
+      body = "Du hast das Turnier gewonnen! +1 Bronze-Credit & eine Bonus-Kniffel-Runde warten auf dich.";
+    } else if (event === "match_warning_1h") {
+      title = "⚠️ Noch 1 Stunde!";
+      body = "Du hast noch 1 Stunde, um deine Wahl im RPS-Match zu treffen.";
+    } else if (event === "match_warning_15m") {
+      title = "🚨 Noch 15 Minuten!";
+      body = "Letzte Chance — wähle jetzt, sonst scheidest du aus!";
+    } else {
+      console.log('[send-push] unknown rps event:', event);
+      return new Response("no-op", { status: 200 });
+    }
+
   } else {
     console.log('[send-push] no-op: no matching branch');
     return new Response("no-op", { status: 200 });

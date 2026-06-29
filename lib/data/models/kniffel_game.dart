@@ -75,6 +75,7 @@ class KniffelGame {
   final DateTime updatedAt;
   final bool crownBonusAvailable;
   final bool crownBonusUsed;
+  final bool isBonus;
 
   const KniffelGame({
     required this.id,
@@ -92,6 +93,7 @@ class KniffelGame {
     required this.updatedAt,
     this.crownBonusAvailable = false,
     this.crownBonusUsed = false,
+    this.isBonus = false,
   });
 
   bool get isCompleted => status == KniffelStatus.completed;
@@ -156,6 +158,7 @@ class KniffelGame {
       updatedAt: DateTime.parse(json['updated_at'] as String),
       crownBonusAvailable: json['crown_bonus_available'] as bool? ?? false,
       crownBonusUsed: json['crown_bonus_used'] as bool? ?? false,
+      isBonus: json['is_bonus'] as bool? ?? false,
     );
   }
 }

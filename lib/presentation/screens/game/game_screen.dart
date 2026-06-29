@@ -94,6 +94,11 @@ class _GameBody extends ConsumerWidget {
       appBar: AppBar(
         title: Text(game.name),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.sports_mma),
+            onPressed: () => context.push('/rps-tournament'),
+            tooltip: 'RPS-Turnier',
+          ),
           if (isAdmin)
             IconButton(
               icon: const Icon(Icons.admin_panel_settings),

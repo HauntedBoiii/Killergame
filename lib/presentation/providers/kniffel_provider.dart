@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:moerderspiel/data/models/kniffel_game.dart';
 import 'package:moerderspiel/data/repositories/kniffel_repository.dart';
+import 'package:moerderspiel/presentation/providers/auth_provider.dart';
 
 final kniffelRepositoryProvider = Provider<KniffelRepository>((ref) {
   return KniffelRepository(Supabase.instance.client);
@@ -18,6 +19,15 @@ class KniffelNotifier extends AsyncNotifier<KniffelGame?> {
     state = await AsyncValue.guard(
       () => ref.read(kniffelRepositoryProvider).startOrResume(),
     );
+  }
+
+  Future<void> startOrResumeBonus() async {
+    if (state.isLoading) return;
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(
+      () => ref.read(kniffelRepositoryProvider).startOrResumeBonus(),
+    );
+    ref.invalidate(profileProvider);
   }
 
   Future<void> roll(List<bool> held) async {

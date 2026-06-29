@@ -5,6 +5,7 @@ class Profile {
   final int totalKills;
   final int totalGames;
   final int totalWins;
+  final bool rpsBonusAvailable;
   final DateTime createdAt;
 
   const Profile({
@@ -14,6 +15,7 @@ class Profile {
     this.totalKills = 0,
     this.totalGames = 0,
     this.totalWins = 0,
+    this.rpsBonusAvailable = false,
     required this.createdAt,
   });
 
@@ -24,6 +26,7 @@ class Profile {
         totalKills: (json['total_kills'] as int?) ?? 0,
         totalGames: (json['total_games'] as int?) ?? 0,
         totalWins: (json['total_wins'] as int?) ?? 0,
+        rpsBonusAvailable: (json['rps_bonus_available'] as bool?) ?? false,
         createdAt: DateTime.parse(json['created_at'] as String),
       );
 

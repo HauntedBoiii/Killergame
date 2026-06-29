@@ -13,6 +13,7 @@ import 'package:moerderspiel/presentation/screens/game/kill_history_screen.dart'
 import 'package:moerderspiel/presentation/screens/game/lobby_screen.dart';
 import 'package:moerderspiel/presentation/screens/game/report_kill_screen.dart';
 import 'package:moerderspiel/presentation/screens/game/target_screen.dart';
+import 'package:moerderspiel/presentation/screens/game/rps_tournament_screen.dart';
 import 'package:moerderspiel/presentation/screens/game/tasks_screen.dart';
 import 'package:moerderspiel/presentation/screens/home/home_screen.dart';
 import 'package:moerderspiel/presentation/screens/kniffel/kniffel_leaderboard_screen.dart';
@@ -85,6 +86,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/lootbox',        pageBuilder: (_, s) => _page(const LootboxScreen(), s)),
       GoRoute(path: '/kniffel',        pageBuilder: (_, s) => _page(const KniffelScreen(), s)),
       GoRoute(path: '/kniffel/leaderboard', pageBuilder: (_, s) => _page(const KniffelLeaderboardScreen(), s)),
+      GoRoute(path: '/rps-tournament',      pageBuilder: (_, s) => _page(const RpsTournamentScreen(), s)),
       GoRoute(path: '/game/create',    pageBuilder: (_, s) => _page(const CreateGameScreen(), s)),
       GoRoute(
         path: '/game/join',
@@ -102,8 +104,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: 'tasks',       pageBuilder: (_, s) => _page(TasksScreen(gameId: s.pathParameters['gameId']!), s)),
           GoRoute(path: 'report-kill', pageBuilder: (_, s) => _page(ReportKillScreen(gameId: s.pathParameters['gameId']!), s)),
           GoRoute(path: 'history',     pageBuilder: (_, s) => _page(KillHistoryScreen(gameId: s.pathParameters['gameId']!), s)),
-          GoRoute(path: 'over',        pageBuilder: (_, s) => _page(GameOverScreen(gameId: s.pathParameters['gameId']!), s)),
-          GoRoute(path: 'admin',       pageBuilder: (_, s) => _page(AdminScreen(gameId: s.pathParameters['gameId']!), s)),
+          GoRoute(path: 'over',           pageBuilder: (_, s) => _page(GameOverScreen(gameId: s.pathParameters['gameId']!), s)),
+          GoRoute(path: 'admin',          pageBuilder: (_, s) => _page(AdminScreen(gameId: s.pathParameters['gameId']!), s)),
         ],
       ),
     ],

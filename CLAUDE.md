@@ -115,6 +115,124 @@ Diese Klassen sind file-privat (`_`) und existieren in beiden Screens — kein s
 
 ---
 
+## Feature-Vorschläge (noch nicht implementiert)
+
+### Schicksalskarten
+Tägliche optionale Karten-Zieh-Mechanik. Spieler können jeden Tag eine verdeckte Karte aufdecken — müssen aber nicht. Erzeugt tägliche Wiederkehr wie Kniffel, passt thematisch zum düsteren Assassinen-Universum.
+
+**Verteilung:** ~55% gute Karten, ~45% schlechte Karten — nah genug an 50/50, damit das Zögern real ist.
+
+**Gute Karten:**
+- Blutgold — +1 Bronzecredit (sofort)
+- Silberne Gnade — +1 Silvercredit (sofort)
+- Schutzmantel — 2h Schutz, frei einlösbar (Token)
+- Zusatzauftrag — heute eine weitere Aufgabe (sofort)
+- Glückswurf — beim heutigen Kniffel ein Feld doppelt streichen (Kniffel)
+- Narrenzug — beim heutigen Kniffel einen vierten Wurf in einer Runde (Kniffel)
+- Spurlos — Jäger sieht heute nur "???" statt deinem Namen (24h)
+- Blutiger Bonus — nächster Kill zählt doppelt für Credits (Token)
+- Informant — du erfährst wie viele Kills dein Ziel hat (sofort)
+- Freie Hand — nächster Kill ohne Admin-Bestätigung (Token)
+- Zweite Chance — aktuelle Aufgabe kostenlos tauschen (Token)
+- Lootbox-Fund — +1 Bronze-Lootbox (sofort)
+
+**Schlechte Karten:**
+- Würfelgrab — Kniffel-Feld "Kniffel" heute automatisch gestrichen (Kniffel)
+- Geächteter — 24h ohne Zeugen und in Schutzzonen eliminierbar (24h)
+- Schwarze Hand — aktiver Schutzmantel wird sofort aufgehoben (sofort)
+- Verfluchter Wurf — beim heutigen Kniffel nur zwei Würfe pro Runde (Kniffel)
+- Fehlinformation — 24h falscher Zielname sichtbar (24h)
+- Tributpflicht — -1 Bronzecredit (min. 0, sofort)
+- Vergifteter Auftrag — aktuelle Aufgabe wird durch Schwierigkeit-3-Aufgabe ersetzt (sofort)
+- Stumme Klinge — 6h keine Kills melden (6h)
+- Schlechtes Omen — falls heute eliminiert: -2 Credits extra (24h)
+- Verhext — nächster Kill braucht Zeugen, auch ohne Admin-Bestätigung (Token)
+
+**DB-Skizze:** `fate_card_draws(id, user_id, drawn_at, card_type, effect_expires_at, redeemed_at, is_active)`
+
+**Integrationspoints:** Kill-Reporting (Geächteter, Stumme Klinge, Freie Hand, Verhext), Kniffel (Würfelgrab, Glückswurf, Narrenzug, Verfluchter Wurf), Home-Screen (Card-Widget analog zu _DailyKniffelCard)
+
+**Offene Fragen vor Implementierung:**
+- Karte ablehnen nach dem Aufdecken oder Ziehen = Annehmen?
+- Stapeln sich Flüche über mehrere Tage?
+- Sehen andere Spieler aktive Flüche (Badge auf Profilkarte)?
+- Seltenheitsstufen (Common/Rare) mit stärkeren Effekten?
+
+### Codewort / Doppelagent (Spyfall-Mechanik)
+Mini-Spiel das separat vom laufenden Assassinen-Spiel gestartet werden kann. Passt thematisch perfekt: alle sind Agenten, einer ist ein Doppelagent der das Codewort nicht kennt.
+
+**Kern-Mechanik:**
+- Alle Spieler außer einem sehen dasselbe geheime Codewort (z.B. "Leuchtturm")
+- Der Doppelagent sieht nur: "Du bist der Doppelagent" — kein Wort
+- In zufälliger Reihenfolge sagt jeder Spieler pro Runde **einen einzigen Begriff** der zum Codewort passt — nicht zu offensichtlich (sonst errät der Doppelagent), aber gut genug dass die Gruppe ihn versteht
+- Nach jeder Runde: optionale Abstimmung wer der Doppelagent ist
+- Der Doppelagent kann jederzeit raten: nennt er das Codewort korrekt, gewinnt er sofort
+
+**Siegbedingungen:**
+- Gruppe wählt den Doppelagenten raus → Gruppe gewinnt
+- Doppelagent nennt das Codewort korrekt (auch nach dem Rauswurf) → Doppelagent gewinnt
+- Doppelagent überlebt X Runden unentdeckt → Doppelagent gewinnt
+
+**Zwei Modi:**
+
+*Full Online-Modus*
+- Codewort wird allen normalen Spielern in der App angezeigt
+- Begriffe werden in einen In-App-Chat getippt (Reihenfolge erzwungen — nächster Spieler kann erst eingeben wenn der vorherige dran war)
+- Abstimmung und Auflösung komplett in der App
+- Asynchron spielbar, kein gemeinsamer Raum nötig
+
+*Hybrid-Modus*
+- App zeigt das Codewort (normalen Spielern) und die Spielreihenfolge
+- Begriffe werden laut im Raum gesagt — App trackt nur Reihenfolge und Timer
+- App übernimmt: Abstimmung, Doppelagent-Auflösung, Codewort-Rateversuch
+- Ideal für physische Spielrunden wo Mörderspiel eh schon gespielt wird
+
+**DB-Skizze:**
+- `codename_sessions(id, host_id, game_id nullable, codword, status, mode, created_at)`
+- `codename_players(id, session_id, user_id, is_impostor, clues_given[])`
+- `codename_clues(id, session_id, player_id, round, clue_text, submitted_at)` — nur Full Online
+- `codename_votes(id, session_id, voter_id, voted_for_id, round)`
+
+**Mindestspielerzahl:** 7 Spieler — darunter kein Start möglich.
+
+**Belohnungen:**
+- Doppelagent gewinnt → 1 Lootbox
+- Gruppe gewinnt → Credits (Betrag noch offen)
+
+**Integrationspoints:**
+- Vom Home-Screen oder aus einer aktiven Spiellobby startbar
+- Codewort-Pool: vordefinierte thematische Wörter (Agenten/Thriller-Thema: "Bunker", "Akte", "Verräter", "Schalldämpfer" etc.) + erweiterbar
+
+**Offene Fragen vor Implementierung:**
+- Feste Rundenanzahl oder bis zur Abstimmung?
+- Mehrere Doppelагенты möglich (ab X Spielern)?
+- Codewort-Kategorien wählbar (z.B. "Orte", "Agenten-Ausrüstung", "Personen")?
+- Timer pro Zug im Full-Online-Modus?
+
+### Schnick-Schnack-Schnuck-Turnier
+Spontanes KO-Turnier unter allen aktiven Spielern eines laufenden Spiels. Belohnung: eine zweite Chance beim heutigen Daily-Kniffel — es zählt am Ende nur die bessere der zwei Runden.
+
+**Ablauf:**
+- Admin oder Spieler startet ein Turnier (einmal pro Tag?)
+- Alle aktiven Spieler werden automatisch eingelost
+- KO-Bracket: je zwei Spieler spielen gegeneinander, Sieger kommt weiter
+- Jedes Duell: gleichzeitige Eingabe (Schere/Stein/Papier), bei Unentschieden Wiederholung
+- Finale → Sieger bekommt zweite Kniffel-Runde
+
+**Technische Skizze:**
+- `rps_tournaments(id, game_id, created_at, status, bracket_json)`
+- `rps_matches(id, tournament_id, player_a, player_b, choice_a, choice_b, winner, round)`
+- Realtime: beide Spieler sehen live wenn Gegner gewählt hat → Reveal
+- Zeitlimit pro Zug (z.B. 30s), bei Timeout zufällige Wahl
+
+**Offene Fragen vor Implementierung:**
+- Wer kann ein Turnier starten — nur Admin oder jeder Spieler?
+- Mindestspielerzahl (sinnvoll ab 4)?
+- Was passiert bei ungerade Spielerzahl (Freilos)?
+- Zweite Kniffel-Runde: neue komplette Runde oder nur einzelne Felder nachspielen?
+
+---
+
 ## Design-Vorschau (standalone, kein Produktionscode)
 Es gibt eine separate Vorschau-App für UI-Designs:
 ```
