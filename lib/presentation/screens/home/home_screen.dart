@@ -6,7 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:moerderspiel/core/services/push_notification_service.dart';
 import 'package:moerderspiel/core/utils/helpers.dart';
 import 'package:moerderspiel/data/models/game.dart';
+import 'package:moerderspiel/data/models/codename_session.dart';
 import 'package:moerderspiel/presentation/providers/auth_provider.dart';
+import 'package:moerderspiel/presentation/providers/codename_provider.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
 import 'package:moerderspiel/presentation/providers/kniffel_provider.dart';
 import 'package:moerderspiel/presentation/providers/rps_tournament_provider.dart';
@@ -213,6 +215,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
+
+            // Doppelagent sessions
+            ref.watch(activeCodenameSessionsProvider).when(
+              data: (sessions) {
+                if (sessions.isEmpty) return const SizedBox.shrink();
+                return Column(
+                  children: sessions.mapIndexed((i, s) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _CodenameSessionCard(session: s)
+                        .animate(key: ValueKey('home_codename_${s.id}'))
+                        .fadeIn(delay: Duration(milliseconds: 100 + i * 60)),
+                  )).toList(),
+                );
+              },
+              loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
             ),
 
@@ -763,6 +782,81 @@ class _DailyRpsCard extends ConsumerWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Codename Session Card (slim) ───────────────────────────
+
+class _CodenameSessionCard extends StatelessWidget {
+  final CodenameSession session;
+  const _CodenameSessionCard({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isActive = session.isActive;
+    final route = isActive
+        ? '/codename/${session.id}'
+        : '/codename/${session.id}/lobby';
+
+    return GestureDetector(
+      onTap: () => context.push(route),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: theme.cardTheme.color,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.psychology_outlined, size: 18, color: Colors.grey),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(session.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text(
+                    isActive
+                        ? 'Läuft · Runde ${session.currentRound}'
+                        : 'Lobby · Code ${session.code}',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'DOPPELAGENT',
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                  color: Colors.grey.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey.withValues(alpha: 0.5)),
+          ],
         ),
       ),
     );

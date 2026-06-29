@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:moerderspiel/core/utils/helpers.dart';
+import 'package:moerderspiel/presentation/providers/codename_provider.dart';
 import 'package:moerderspiel/presentation/providers/game_provider.dart';
 import 'package:moerderspiel/presentation/widgets/common/app_button.dart';
 
@@ -37,11 +38,20 @@ class _JoinGameScreenState extends ConsumerState<JoinGameScreen> {
     }
     setState(() => _loading = true);
     try {
-      final game = await ref.read(gameRepositoryProvider).joinGame(code);
-      ref.invalidate(activeGamesProvider);
-      if (mounted) context.pushReplacement('/game/${game.id}/lobby');
+      // Assassinen-Spiel versuchen
+      try {
+        final game = await ref.read(gameRepositoryProvider).joinGame(code);
+        ref.invalidate(activeGamesProvider);
+        if (mounted) context.pushReplacement('/game/${game.id}/lobby');
+        return;
+      } catch (_) {}
+
+      // Doppelagent-Session versuchen
+      final session = await ref.read(codenameRepositoryProvider).joinSession(code);
+      ref.invalidate(activeCodenameSessionsProvider);
+      if (mounted) context.pushReplacement('/codename/${session.id}/lobby');
     } catch (e) {
-      if (mounted) showSnack(context, 'Fehler: $e', isError: true);
+      if (mounted) showSnack(context, 'Code nicht gefunden', isError: true);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -81,7 +91,7 @@ class _JoinGameScreenState extends ConsumerState<JoinGameScreen> {
                 style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 8),
                 decoration: InputDecoration(
                   hintText: 'XXXXXX',
-                  hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5), letterSpacing: 8),
+                  hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5), letterSpacing: 8),
                   counterText: '',
                 ),
                 onChanged: (v) {

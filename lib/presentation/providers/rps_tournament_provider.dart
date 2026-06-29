@@ -14,6 +14,17 @@ final usernameByIdProvider =
   return (data?['username'] as String?) ?? userId.substring(0, 8);
 });
 
+/// Liefert Avatar-URL eines Users per ID (null wenn keiner gesetzt).
+final avatarUrlByIdProvider =
+    FutureProvider.autoDispose.family<String?, String>((ref, userId) async {
+  final data = await Supabase.instance.client
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', userId)
+      .maybeSingle();
+  return data?['avatar_url'] as String?;
+});
+
 final rpsTournamentRepositoryProvider = Provider<RpsTournamentRepository>((ref) {
   return RpsTournamentRepository(Supabase.instance.client);
 });

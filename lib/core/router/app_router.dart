@@ -13,6 +13,8 @@ import 'package:moerderspiel/presentation/screens/game/kill_history_screen.dart'
 import 'package:moerderspiel/presentation/screens/game/lobby_screen.dart';
 import 'package:moerderspiel/presentation/screens/game/report_kill_screen.dart';
 import 'package:moerderspiel/presentation/screens/game/target_screen.dart';
+import 'package:moerderspiel/presentation/screens/codename/codename_lobby_screen.dart';
+import 'package:moerderspiel/presentation/screens/codename/codename_game_screen.dart';
 import 'package:moerderspiel/presentation/screens/game/rps_tournament_screen.dart';
 import 'package:moerderspiel/presentation/screens/game/tasks_screen.dart';
 import 'package:moerderspiel/presentation/screens/home/home_screen.dart';
@@ -87,6 +89,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/kniffel',        pageBuilder: (_, s) => _page(const KniffelScreen(), s)),
       GoRoute(path: '/kniffel/leaderboard', pageBuilder: (_, s) => _page(const KniffelLeaderboardScreen(), s)),
       GoRoute(path: '/rps-tournament',      pageBuilder: (_, s) => _page(const RpsTournamentScreen(), s)),
+      GoRoute(
+        path: '/codename/:sessionId/lobby',
+        pageBuilder: (_, s) => _page(CodenameLobbyScreen(sessionId: s.pathParameters['sessionId']!), s),
+      ),
+      GoRoute(
+        path: '/codename/:sessionId',
+        pageBuilder: (_, s) => _page(CodenameGameScreen(sessionId: s.pathParameters['sessionId']!), s),
+      ),
       GoRoute(path: '/game/create',    pageBuilder: (_, s) => _page(const CreateGameScreen(), s)),
       GoRoute(
         path: '/game/join',
